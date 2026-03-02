@@ -62,9 +62,9 @@ class GlassBottomNav extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xC9FFFFFF), Color(0xBFEFE8FF)],
+                  colors: [Color(0x66FFFFFF), Color(0x55EFE8FF)],
                 ),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.76)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -86,7 +86,7 @@ class GlassBottomNav extends StatelessWidget {
                           child: DecoratedBox(
                             decoration: BoxDecoration(
                               color: AppColors.primarySoft.withValues(
-                                alpha: 0.95,
+                                alpha: 0.7,
                               ),
                               borderRadius: BorderRadius.circular(22),
                             ),
@@ -101,10 +101,16 @@ class GlassBottomNav extends StatelessWidget {
                               .abs()
                               .clamp(0.0, 1.0);
                           final t = 1 - distance;
-                          final color =
+                          final iconColor =
                               Color.lerp(
                                 AppColors.navInactive,
                                 AppColors.navActiveText,
+                                t,
+                              )!;
+                          final labelColor =
+                              Color.lerp(
+                                AppColors.navInactive,
+                                AppColors.navActiveLabel,
                                 t,
                               )!;
                           final scale = 1 + (0.03 * t);
@@ -128,7 +134,7 @@ class GlassBottomNav extends StatelessWidget {
                                       scale: scale,
                                       child: Icon(
                                         item.icon,
-                                        color: color,
+                                        color: iconColor,
                                         size: 19,
                                       ),
                                     ),
@@ -141,7 +147,7 @@ class GlassBottomNav extends StatelessWidget {
                                         height: 1,
                                         letterSpacing: 0.2,
                                         fontWeight: weight,
-                                        color: color,
+                                        color: labelColor,
                                       ),
                                     ),
                                   ],

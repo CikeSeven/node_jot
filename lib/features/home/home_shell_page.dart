@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -109,13 +107,6 @@ class _HomeShellPageState extends State<HomeShellPage> {
             },
             children: pages,
           ),
-          // 底栏下的毛玻璃衬底，让页面内容可延伸到底部且不影响可读性。
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _BottomNavBackdrop(),
-          ),
           // 悬浮底部导航栏。
           Positioned(
             left: 0,
@@ -153,40 +144,5 @@ class _KeepAlivePageState extends State<_KeepAlivePage>
   Widget build(BuildContext context) {
     super.build(context);
     return widget.child;
-  }
-}
-
-/// 底栏下方模糊背景层。
-///
-/// 作用：让内容可以延伸到底部导航下方，同时保持可读性。
-class _BottomNavBackdrop extends StatelessWidget {
-  const _BottomNavBackdrop();
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final height = 100 + bottomInset;
-
-    return IgnorePointer(
-      child: ClipRect(
-        // 仅在底部区域做背景模糊，避免全屏模糊带来的性能开销。
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            height: height,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.white.withValues(alpha: 0.0),
-                  Colors.white.withValues(alpha: 0.3),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
