@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_colors.dart';
@@ -171,84 +172,113 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   child: const Icon(CupertinoIcons.add),
                 ),
               ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: AppTheme.pageBackground(Theme.of(context).brightness),
-        ),
-        child: SafeArea(
-          child: StreamBuilder<List<NoteEntity>>(
-            stream: services.noteRepository.watchActiveNotes(),
-            builder: (context, snapshot) {
-              final notes = snapshot.data ?? const <NoteEntity>[];
-              final visibleIds = notes.map((e) => e.noteId).toSet();
-              if (_selectedNoteIds.any((id) => !visibleIds.contains(id))) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) {
-                    return;
+      body: PopScope(
+        canPop: !_isSelectionMode,
+        onPopInvoked: (didPop) {
+          if (!didPop && _isSelectionMode) {
+            _clearSelection();
+          }
+        },
+        child: Focus(
+          autofocus: true,
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) {
+              return KeyEventResult.ignored;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.escape &&
+                _isSelectionMode) {
+              _clearSelection();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: AppTheme.pageBackground(Theme.of(context).brightness),
+            ),
+            child: SafeArea(
+              child: StreamBuilder<List<NoteEntity>>(
+                stream: services.noteRepository.watchActiveNotes(),
+                builder: (context, snapshot) {
+                  final notes = snapshot.data ?? const <NoteEntity>[];
+                  final visibleIds = notes.map((e) => e.noteId).toSet();
+                  if (_selectedNoteIds.any((id) => !visibleIds.contains(id))) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) {
+                        return;
+                      }
+                      setState(() {
+                        _selectedNoteIds.removeWhere(
+                          (id) => !visibleIds.contains(id),
+                        );
+                      });
+                    });
                   }
-                  setState(() {
-                    _selectedNoteIds.removeWhere((id) => !visibleIds.contains(id));
-                  });
-                });
-              }
 
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.l,
-                      AppSpacing.m,
-                      AppSpacing.l,
-                      0,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _isSelectionMode
-                                ? l10n.selectedCountLabel(_selectedNoteIds.length)
-                                : 'NodeJot',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.l,
+                          AppSpacing.m,
+                          AppSpacing.l,
+                          0,
                         ),
-                        if (_isSelectionMode) ...[
-                          IconButton(
-                            tooltip: l10n.archive,
-                            onPressed: () => _archiveSelected(services, l10n),
-                            icon: const Icon(CupertinoIcons.archivebox),
-                          ),
-                          IconButton(
-                            tooltip: l10n.delete,
-                            onPressed: () => _deleteSelected(services, l10n),
-                            icon: Icon(
-                              CupertinoIcons.delete,
-                              color: Theme.of(context).colorScheme.error,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _isSelectionMode
+                                    ? l10n.selectedCountLabel(
+                                      _selectedNoteIds.length,
+                                    )
+                                    : 'NodeJot',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
                             ),
-                          ),
-                        ] else
-                          IconButton(
-                            tooltip: l10n.archivedNotes,
-                            onPressed:
-                                () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => const ArchivedNotesPage(),
-                                  ),
+                            if (_isSelectionMode) ...[
+                              IconButton(
+                                tooltip: l10n.cancel,
+                                onPressed: _clearSelection,
+                                icon: const Icon(CupertinoIcons.xmark_circle),
+                              ),
+                              IconButton(
+                                tooltip: l10n.archive,
+                                onPressed: () => _archiveSelected(services, l10n),
+                                icon: const Icon(CupertinoIcons.archivebox),
+                              ),
+                              IconButton(
+                                tooltip: l10n.delete,
+                                onPressed: () => _deleteSelected(services, l10n),
+                                icon: Icon(
+                                  CupertinoIcons.delete,
+                                  color: Theme.of(context).colorScheme.error,
                                 ),
-                            icon: const Icon(CupertinoIcons.archivebox),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.m),
-                  Expanded(
-                    child: ListView.separated(
+                              ),
+                            ] else
+                              IconButton(
+                                tooltip: l10n.archivedNotes,
+                                onPressed:
+                                    () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const ArchivedNotesPage(),
+                                      ),
+                                    ),
+                                icon: const Icon(CupertinoIcons.archivebox),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.m),
+                      Expanded(
+                        child: ListView.separated(
                       key: const PageStorageKey<String>('notes_list'),
                       padding: EdgeInsets.only(bottom: listBottomOffset),
                       itemCount: notes.isEmpty ? 2 : notes.length + 1,
                       separatorBuilder: (context, index) {
                         return SizedBox(height: index == 0 ? 8 : 10);
                       },
-                      itemBuilder: (context, index) {
+                          itemBuilder: (context, index) {
                         if (index == 0) {
                           return Padding(
                             padding: const EdgeInsets.symmetric(
@@ -282,56 +312,60 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
                         final note = notes[index - 1];
                         final selected = _selectedNoteIds.contains(note.noteId);
-                        final card = Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.l,
-                          ),
-                          child: _NoteCard(
-                            note: note,
-                            selected: selected,
-                            onTap: () {
-                              if (_isSelectionMode) {
-                                _toggleSelection(note.noteId);
-                                return;
-                              }
-                              _openEditor(note.noteId);
-                            },
-                            onLongPress:
-                                () => _toggleSelection(
-                                  note.noteId,
-                                  forceSelect: true,
-                                ),
-                          ),
-                        );
+                            final card = Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.l,
+                              ),
+                              child: _NoteCard(
+                                note: note,
+                                selected: selected,
+                                onTap: () {
+                                  if (_isSelectionMode) {
+                                    _toggleSelection(note.noteId);
+                                    return;
+                                  }
+                                  _openEditor(note.noteId);
+                                },
+                                onLongPress:
+                                    () => _toggleSelection(
+                                      note.noteId,
+                                      forceSelect: true,
+                                    ),
+                              ),
+                            );
 
-                        if (_isSelectionMode) {
-                          return card;
-                        }
-
-                        return Dismissible(
-                          key: ValueKey<String>('active-${note.noteId}'),
-                          direction: DismissDirection.endToStart,
-                          background: _SwipeActionBackground(
-                            label: l10n.archive,
-                            icon: CupertinoIcons.archivebox_fill,
-                            color: const Color(0xFF9C6BD8),
-                          ),
-                          onDismissed: (_) async {
-                            await services.syncEngine.archiveLocalNote(note.noteId);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(l10n.noteArchived)),
-                              );
+                            if (_isSelectionMode) {
+                              return card;
                             }
+
+                            return Dismissible(
+                              key: ValueKey<String>('active-${note.noteId}'),
+                              direction: DismissDirection.endToStart,
+                              background: _SwipeActionBackground(
+                                label: l10n.archive,
+                                icon: CupertinoIcons.archivebox_fill,
+                                color: const Color(0xFF9C6BD8),
+                              ),
+                              onDismissed: (_) async {
+                                await services.syncEngine.archiveLocalNote(
+                                  note.noteId,
+                                );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(l10n.noteArchived)),
+                                  );
+                                }
+                              },
+                              child: card,
+                            );
                           },
-                          child: card,
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              );
-            },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
         ),
       ),
@@ -394,27 +428,23 @@ class _NoteCard extends StatelessWidget {
     final l10n = context.l10n;
     final formatter = DateFormat('yyyy-MM-dd HH:mm');
     final colorScheme = Theme.of(context).colorScheme;
-    return IosFrostedPanel(
-      radius: 16,
-      blur: 14,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
+    return Container(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color:
-                selected
-                    ? colorScheme.primary.withValues(alpha: 0.08)
-                    : Colors.transparent,
-            border:
-                selected
-                    ? Border.all(color: colorScheme.primary.withValues(alpha: 0.5))
-                    : null,
-          ),
+        border:
+            selected
+                ? Border.all(color: colorScheme.primary.withValues(alpha: 0.55))
+                : null,
+      ),
+      child: IosFrostedPanel(
+        radius: 16,
+        blur: 14,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(2),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -438,14 +468,14 @@ class _NoteCard extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Text(
                   note.contentMd,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                const SizedBox(height: 9),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Text(
