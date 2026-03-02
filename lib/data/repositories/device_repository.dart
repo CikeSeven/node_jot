@@ -25,6 +25,11 @@ class DeviceRepository {
     return _db.deviceEntitys.where().deviceIdEqualTo(deviceId).findFirst();
   }
 
+  /// 读取当前所有已配对设备。
+  Future<List<DeviceEntity>> getTrustedDevices() {
+    return _db.deviceEntitys.where().filter().trustedEqualTo(true).findAll();
+  }
+
   /// 更新或插入“已发现但未配对”的设备信息。
   Future<void> upsertSeenDevice({
     required String deviceId,

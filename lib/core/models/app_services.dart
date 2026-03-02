@@ -73,9 +73,10 @@ class AppServices {
     final opLogRepository = OpLogRepository(isarService.db);
     final syncCursorRepository = SyncCursorRepository(isarService.db);
     final cryptoService = CryptoService();
-    if (appSettingsService.oneTimeConnectionNotifier.value) {
-      await deviceRepository.clearTrustedDevices();
-    }
+    await _cleanupOneTimeTrustedDevices(
+      appSettingsService: appSettingsService,
+      deviceRepository: deviceRepository,
+    );
 
     final discoveryService = DiscoveryService(
       localDeviceService: localDeviceService,
@@ -120,13 +121,34 @@ class AppServices {
   ///
   /// 关闭顺序与启动相反，避免出现已释放资源仍被后台任务访问的情况。
   Future<void> dispose() async {
-    if (appSettingsService.oneTimeConnectionNotifier.value) {
-      await deviceRepository.clearTrustedDevices();
-    }
+    await _cleanupOneTimeTrustedDevices(
+      appSettingsService: appSettingsService,
+      deviceRepository: deviceRepository,
+    );
     await syncEngine.dispose();
     localeService.dispose();
     themeService.dispose();
     appSettingsService.dispose();
     await isarService.dispose();
+  }
+
+  static Future<void> _cleanupOneTimeTrustedDevices({
+    required AppSettingsService appSettingsService,
+    required DeviceRepository deviceRepository,
+  }) async {
+    final trusted = await deviceRepository.getTrustedDevices();
+    for (final device in trusted) {
+      final oneTimeEnabled = appSettingsService.getDeviceOneTimeConnectionEnabled(
+        device.deviceId,
+      );
+      if (!oneTimeEnabled) {
+        continue;
+      }
+      await deviceRepository.deleteDevice(device.deviceId);
+      await appSettingsService.removeDeviceAutoSyncEnabled(device.deviceId);
+      await appSettingsService.removeDeviceOneTimeConnectionEnabled(
+        device.deviceId,
+      );
+    }
   }
 }

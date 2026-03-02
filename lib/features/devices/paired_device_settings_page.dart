@@ -91,7 +91,10 @@ class _PairedDeviceSettingsPageState
                   children: [
                     ValueListenableBuilder<bool>(
                       valueListenable:
-                          services.appSettingsService.oneTimeConnectionNotifier,
+                          services.appSettingsService
+                              .deviceOneTimeConnectionEnabledListenable(
+                                widget.device.deviceId,
+                              ),
                       builder: (context, enabled, _) {
                         return SwitchListTile.adaptive(
                           value: enabled,
@@ -100,7 +103,10 @@ class _PairedDeviceSettingsPageState
                           subtitle: Text(l10n.oneTimeConnectionHint),
                           onChanged:
                               (value) => services.appSettingsService
-                                  .setOneTimeConnection(value),
+                                  .setDeviceOneTimeConnectionEnabled(
+                                    widget.device.deviceId,
+                                    value,
+                                  ),
                         );
                       },
                     ),

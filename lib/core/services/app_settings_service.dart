@@ -12,6 +12,17 @@ class DeviceAutoSyncSetting {
   final DateTime updatedAt;
 }
 
+/// 单设备一次性连接配置。
+class DeviceOneTimeConnectionSetting {
+  const DeviceOneTimeConnectionSetting({
+    required this.enabled,
+    required this.updatedAt,
+  });
+
+  final bool enabled;
+  final DateTime updatedAt;
+}
+
 /// 应用运行设置服务。
 ///
 /// 持久化保存用户对连接策略和同步策略的偏好。
@@ -38,6 +49,10 @@ class AppSettingsService {
   static const _keyDeviceAutoSyncPrefix = 'app.settings.device_auto_sync.';
   static const _keyDeviceAutoSyncUpdatedAtPrefix =
       'app.settings.device_auto_sync.updated_at.';
+  static const _keyDeviceOneTimeConnectionPrefix =
+      'app.settings.device_one_time_connection.';
+  static const _keyDeviceOneTimeConnectionUpdatedAtPrefix =
+      'app.settings.device_one_time_connection.updated_at.';
 
   final SharedPreferences _prefs;
   final ValueNotifier<bool> oneTimeConnectionNotifier;
@@ -45,6 +60,7 @@ class AppSettingsService {
   final ValueNotifier<bool> fixedPairingCodeEnabledNotifier;
   String? _fixedPairingCode;
   final Map<String, ValueNotifier<bool>> _deviceAutoSyncNotifiers = {};
+  final Map<String, ValueNotifier<bool>> _deviceOneTimeConnectionNotifiers = {};
 
   /// 固定配对码（4 位数字），未设置时为 null。
   String? get fixedPairingCode => _fixedPairingCode;
@@ -168,6 +184,98 @@ class AppSettingsService {
     _deviceAutoSyncNotifiers.remove(deviceId)?.dispose();
   }
 
+  /// 读取指定设备的一次性连接开关。
+  ///
+  /// 若该设备尚未单独配置，则回退到全局一次性连接设置。
+  bool getDeviceOneTimeConnectionEnabled(String deviceId) {
+    return getDeviceOneTimeConnectionSetting(deviceId).enabled;
+  }
+
+  /// 读取指定设备的一次性连接配置（含最后修改时间）。
+  DeviceOneTimeConnectionSetting getDeviceOneTimeConnectionSetting(
+    String deviceId,
+  ) {
+    final enabled = _prefs.getBool(_deviceOneTimeConnectionKey(deviceId));
+    final updatedAtMs = _prefs.getInt(
+      _deviceOneTimeConnectionUpdatedAtKey(deviceId),
+    );
+    final updatedAt =
+        updatedAtMs == null
+            ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
+            : DateTime.fromMillisecondsSinceEpoch(updatedAtMs, isUtc: true);
+    return DeviceOneTimeConnectionSetting(
+      enabled: enabled ?? oneTimeConnectionNotifier.value,
+      updatedAt: updatedAt,
+    );
+  }
+
+  /// 获取指定设备一次性连接开关的监听器。
+  ValueListenable<bool> deviceOneTimeConnectionEnabledListenable(
+    String deviceId,
+  ) {
+    final existing = _deviceOneTimeConnectionNotifiers[deviceId];
+    if (existing != null) {
+      return existing;
+    }
+    final value = getDeviceOneTimeConnectionEnabled(deviceId);
+    final notifier = ValueNotifier<bool>(value);
+    _deviceOneTimeConnectionNotifiers[deviceId] = notifier;
+    return notifier;
+  }
+
+  /// 为设备初始化一次性连接开关（仅当该设备尚无配置时写入）。
+  Future<void> ensureDeviceOneTimeConnectionEnabled(
+    String deviceId, {
+    bool? defaultEnabled,
+  }) async {
+    final key = _deviceOneTimeConnectionKey(deviceId);
+    final updatedKey = _deviceOneTimeConnectionUpdatedAtKey(deviceId);
+    if (_prefs.containsKey(key)) {
+      final persisted = _prefs.getBool(key) ?? oneTimeConnectionNotifier.value;
+      _upsertDeviceOneTimeConnectionNotifier(deviceId, persisted);
+      if (!_prefs.containsKey(updatedKey)) {
+        await _prefs.setInt(
+          updatedKey,
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
+              .millisecondsSinceEpoch,
+        );
+      }
+      return;
+    }
+
+    final value = defaultEnabled ?? oneTimeConnectionNotifier.value;
+    final now = DateTime.now().toUtc();
+    await _prefs.setBool(key, value);
+    await _prefs.setInt(updatedKey, now.millisecondsSinceEpoch);
+    _upsertDeviceOneTimeConnectionNotifier(deviceId, value);
+  }
+
+  /// 更新指定设备一次性连接开关（latest-wins）。
+  Future<void> setDeviceOneTimeConnectionEnabled(
+    String deviceId,
+    bool enabled, {
+    DateTime? updatedAt,
+  }) async {
+    final incomingAt = (updatedAt ?? DateTime.now().toUtc()).toUtc();
+    final current = getDeviceOneTimeConnectionSetting(deviceId);
+    if (current.updatedAt.isAfter(incomingAt)) {
+      return;
+    }
+    await _prefs.setBool(_deviceOneTimeConnectionKey(deviceId), enabled);
+    await _prefs.setInt(
+      _deviceOneTimeConnectionUpdatedAtKey(deviceId),
+      incomingAt.millisecondsSinceEpoch,
+    );
+    _upsertDeviceOneTimeConnectionNotifier(deviceId, enabled);
+  }
+
+  /// 删除指定设备一次性连接配置（设备解除配对时调用）。
+  Future<void> removeDeviceOneTimeConnectionEnabled(String deviceId) async {
+    await _prefs.remove(_deviceOneTimeConnectionKey(deviceId));
+    await _prefs.remove(_deviceOneTimeConnectionUpdatedAtKey(deviceId));
+    _deviceOneTimeConnectionNotifiers.remove(deviceId)?.dispose();
+  }
+
   /// 开启/关闭固定配对码。
   ///
   /// 开启时若传入了当前有效配对码，会立即持久化，确保下次启动仍保持一致。
@@ -214,6 +322,14 @@ class AppSettingsService {
     return '$_keyDeviceAutoSyncUpdatedAtPrefix$deviceId';
   }
 
+  String _deviceOneTimeConnectionKey(String deviceId) {
+    return '$_keyDeviceOneTimeConnectionPrefix$deviceId';
+  }
+
+  String _deviceOneTimeConnectionUpdatedAtKey(String deviceId) {
+    return '$_keyDeviceOneTimeConnectionUpdatedAtPrefix$deviceId';
+  }
+
   void _upsertDeviceAutoSyncNotifier(String deviceId, bool value) {
     final existing = _deviceAutoSyncNotifiers[deviceId];
     if (existing != null) {
@@ -225,6 +341,17 @@ class AppSettingsService {
     _deviceAutoSyncNotifiers[deviceId] = ValueNotifier<bool>(value);
   }
 
+  void _upsertDeviceOneTimeConnectionNotifier(String deviceId, bool value) {
+    final existing = _deviceOneTimeConnectionNotifiers[deviceId];
+    if (existing != null) {
+      if (existing.value != value) {
+        existing.value = value;
+      }
+      return;
+    }
+    _deviceOneTimeConnectionNotifiers[deviceId] = ValueNotifier<bool>(value);
+  }
+
   void dispose() {
     oneTimeConnectionNotifier.dispose();
     autoSyncNotifier.dispose();
@@ -233,5 +360,9 @@ class AppSettingsService {
       notifier.dispose();
     }
     _deviceAutoSyncNotifiers.clear();
+    for (final notifier in _deviceOneTimeConnectionNotifiers.values) {
+      notifier.dispose();
+    }
+    _deviceOneTimeConnectionNotifiers.clear();
   }
 }
