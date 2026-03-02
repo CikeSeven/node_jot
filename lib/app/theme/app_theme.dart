@@ -20,7 +20,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.backgroundBottom,
-      fontFamily: 'SF Pro Text',
+      fontFamily: 'HarmonyOSSansSC',
       textTheme: const TextTheme(
         titleLarge: TextStyle(
           fontSize: 32,
@@ -106,7 +106,7 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.backgroundBottomDark,
-      fontFamily: 'SF Pro Text',
+      fontFamily: 'HarmonyOSSansSC',
       textTheme: const TextTheme(
         titleLarge: TextStyle(
           fontSize: 32,

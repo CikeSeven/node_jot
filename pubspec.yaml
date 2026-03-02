@@ -3,7 +3,7 @@ description: "A new Flutter project."
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 1.0.0+1
+version: 0.1.0+1
 
 environment:
   sdk: ^3.7.0
@@ -33,7 +33,30 @@ dev_dependencies:
   build_runner: ^2.4.13
   isar_generator: ^3.1.0+1
   ffi: ^2.2.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
 
   uses-material-design: true
+  fonts:
+    - family: HarmonyOSSansSC
+      fonts:
+        - asset: assets/fonts/harmonyos_sans_sc/HarmonyOS_Sans_SC_Regular.ttf
+          weight: 400
+        - asset: assets/fonts/harmonyos_sans_sc/HarmonyOS_Sans_SC_Medium.ttf
+          weight: 500
+        - asset: assets/fonts/harmonyos_sans_sc/HarmonyOS_Sans_SC_Bold.ttf
+          weight: 700
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  windows:
+    generate: true
+    image_path: assets/icons/app_icon.png
+    icon_size: 256
+  image_path: assets/icons/app_icon.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/icons/app_icon.png
+  adaptive_icon_foreground_inset: 0
+  remove_alpha_ios: true
