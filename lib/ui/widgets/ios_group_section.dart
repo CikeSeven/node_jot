@@ -27,6 +27,7 @@ class IosGroupSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       // 分组之间的垂直间距。
       padding: EdgeInsets.only(bottom: bottomSpacing),
@@ -43,7 +44,10 @@ class IosGroupSection extends StatelessWidget {
                   child: Text(
                     title,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: AppColors.textPrimary,
+                      color:
+                          isDark
+                              ? AppColors.textPrimaryDark
+                              : AppColors.textPrimary,
                     ),
                   ),
                 ),
