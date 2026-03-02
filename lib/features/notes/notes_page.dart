@@ -240,7 +240,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                               IconButton(
                                 tooltip: l10n.cancel,
                                 onPressed: _clearSelection,
-                                icon: const Icon(CupertinoIcons.xmark_circle),
+                                icon: const Icon(CupertinoIcons.xmark),
                               ),
                               IconButton(
                                 tooltip: l10n.archive,
