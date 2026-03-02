@@ -254,74 +254,75 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ],
               ),
             ),
-            // 主题模式分组。
+            // 主题与语言合并分组，减少垂直空间占用。
             IosGroupSection(
-              title: l10n.themeMode,
+              title: '${l10n.themeMode} / ${l10n.language}',
               child: ValueListenableBuilder<ThemeMode>(
                 valueListenable: themeService.themeModeNotifier,
                 builder: (context, mode, _) {
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTapDown: (details) {
-                      _showThemeMenu(
-                        context,
-                        details.globalPosition,
-                        currentMode: mode,
-                        themeService: themeService,
-                        l10n: l10n,
+                  return ValueListenableBuilder<Locale>(
+                    valueListenable: services.localeService.localeNotifier,
+                    builder: (context, locale, __) {
+                      return Column(
+                        children: [
+                          InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTapDown: (details) {
+                              _showThemeMenu(
+                                context,
+                                details.globalPosition,
+                                currentMode: mode,
+                                themeService: themeService,
+                                l10n: l10n,
+                              );
+                            },
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.color_lens_outlined),
+                              title: Text(l10n.themeMode),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _themeModeText(l10n, mode),
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                  const Icon(Icons.unfold_more),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTapDown: (details) {
+                              _showLanguageMenu(
+                                context,
+                                details.globalPosition,
+                                currentLocale: locale,
+                                services: services,
+                                l10n: l10n,
+                              );
+                            },
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.language),
+                              title: Text(l10n.language),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _localeText(locale),
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                  const Icon(Icons.unfold_more),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       );
                     },
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.color_lens_outlined),
-                      title: Text(l10n.themeMode),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _themeModeText(l10n, mode),
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          const Icon(Icons.unfold_more),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            // 语言分组。
-            IosGroupSection(
-              title: l10n.language,
-              child: ValueListenableBuilder<Locale>(
-                valueListenable: services.localeService.localeNotifier,
-                builder: (context, locale, _) {
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTapDown: (details) {
-                      _showLanguageMenu(
-                        context,
-                        details.globalPosition,
-                        currentLocale: locale,
-                        services: services,
-                        l10n: l10n,
-                      );
-                    },
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.language),
-                      title: Text(l10n.language),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _localeText(locale),
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          const Icon(Icons.unfold_more),
-                        ],
-                      ),
-                    ),
                   );
                 },
               ),
