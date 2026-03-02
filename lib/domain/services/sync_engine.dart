@@ -329,6 +329,7 @@ class SyncEngine {
         createdAt: DateTime.now().toUtc(),
       ),
     );
+    _scheduleAutoSync();
   }
 
   /// 恢复本地软删除笔记并写入 update 操作日志。

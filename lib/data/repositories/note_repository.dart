@@ -218,7 +218,6 @@ class NoteRepository {
       final now = DateTime.now().toUtc();
       existing
         ..archivedAt = archived ? now : null
-        ..updatedAt = now
         ..lastEditorDeviceId = editorDeviceId
         ..baseRevision = existing.headRevision
         ..headRevision = existing.headRevision + 1;
