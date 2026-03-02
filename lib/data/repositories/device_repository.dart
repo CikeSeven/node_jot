@@ -132,4 +132,15 @@ class DeviceRepository {
       await _db.deviceEntitys.delete(existing.isarId);
     });
   }
+
+  /// 清空所有已配对设备记录。
+  Future<void> clearTrustedDevices() async {
+    await _db.writeTxn(() async {
+      final trusted =
+          await _db.deviceEntitys.where().filter().trustedEqualTo(true).findAll();
+      for (final device in trusted) {
+        await _db.deviceEntitys.delete(device.isarId);
+      }
+    });
+  }
 }

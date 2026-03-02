@@ -108,6 +108,13 @@ class AppLocalizations {
   String get deleteDeviceConfirm =>
       _isZh ? '确定删除该设备吗？删除后需要重新配对。' : 'Delete this device? Pairing will be required again.';
   String get deviceDeleted => _isZh ? '设备已删除' : 'Device deleted';
+  String get connectionAndSync => _isZh ? '连接与同步' : 'Connection & Sync';
+  String get oneTimeConnection => _isZh ? '一次性连接' : 'One-time Connection';
+  String get oneTimeConnectionHint =>
+      _isZh ? '关闭应用后自动删除已配对设备' : 'Delete paired devices when app closes';
+  String get autoSync => _isZh ? '自动同步' : 'Auto Sync';
+  String get autoSyncHint =>
+      _isZh ? '发现已配对设备后自动尝试同步' : 'Auto-sync when paired devices are discovered';
   String get deviceName => _isZh ? '设备名称' : 'Device Name';
   String get saveDeviceName => _isZh ? '保存设备名称' : 'Save Device Name';
   String get localProfile => _isZh ? '本机信息' : 'Local Profile';

@@ -331,6 +331,16 @@ class _DiscoveredDeviceTile extends ConsumerWidget {
         hint: l10n.fourDigitCodeHint,
         cancelText: l10n.cancel,
         invalidCodeText: l10n.pairCodeInvalid,
+        oneTimeConnectionLabel: l10n.oneTimeConnection,
+        autoSyncLabel: l10n.autoSync,
+        initialOneTimeConnection:
+            services.appSettingsService.oneTimeConnectionNotifier.value,
+        initialAutoSync: services.appSettingsService.autoSyncNotifier.value,
+        onOneTimeConnectionChanged:
+            (value) =>
+                services.appSettingsService.setOneTimeConnection(value),
+        onAutoSyncChanged:
+            (value) => services.appSettingsService.setAutoSync(value),
         onSubmit: (code) async {
           try {
             await services.syncEngine.pairWithDevice(device: device, code: code);
@@ -391,6 +401,12 @@ class _FourDigitPairDialog extends StatefulWidget {
     required this.hint,
     required this.cancelText,
     required this.invalidCodeText,
+    required this.oneTimeConnectionLabel,
+    required this.autoSyncLabel,
+    required this.initialOneTimeConnection,
+    required this.initialAutoSync,
+    required this.onOneTimeConnectionChanged,
+    required this.onAutoSyncChanged,
     required this.onSubmit,
   });
 
@@ -398,6 +414,12 @@ class _FourDigitPairDialog extends StatefulWidget {
   final String hint;
   final String cancelText;
   final String invalidCodeText;
+  final String oneTimeConnectionLabel;
+  final String autoSyncLabel;
+  final bool initialOneTimeConnection;
+  final bool initialAutoSync;
+  final Future<void> Function(bool value) onOneTimeConnectionChanged;
+  final Future<void> Function(bool value) onAutoSyncChanged;
   final Future<bool> Function(String code) onSubmit;
 
   @override
@@ -407,6 +429,8 @@ class _FourDigitPairDialog extends StatefulWidget {
 class _FourDigitPairDialogState extends State<_FourDigitPairDialog> {
   late final List<TextEditingController> _controllers;
   late final List<FocusNode> _focusNodes;
+  late bool _oneTimeConnection;
+  late bool _autoSync;
   bool _submitting = false;
   bool _hasError = false;
 
@@ -415,6 +439,8 @@ class _FourDigitPairDialogState extends State<_FourDigitPairDialog> {
     super.initState();
     _controllers = List.generate(4, (_) => TextEditingController());
     _focusNodes = List.generate(4, (_) => FocusNode());
+    _oneTimeConnection = widget.initialOneTimeConnection;
+    _autoSync = widget.initialAutoSync;
   }
 
   @override
@@ -572,6 +598,47 @@ class _FourDigitPairDialogState extends State<_FourDigitPairDialog> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              value: _oneTimeConnection,
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(widget.oneTimeConnectionLabel),
+              onChanged:
+                  _submitting
+                      ? null
+                      : (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() {
+                          _oneTimeConnection = value;
+                        });
+                        unawaited(widget.onOneTimeConnectionChanged(value));
+                      },
+            ),
+            CheckboxListTile(
+              value: _autoSync,
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(widget.autoSyncLabel),
+              onChanged:
+                  _submitting
+                      ? null
+                      : (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() {
+                          _autoSync = value;
+                        });
+                        unawaited(widget.onAutoSyncChanged(value));
+                      },
             ),
           ],
         ),

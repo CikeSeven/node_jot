@@ -7,6 +7,7 @@ import '../../data/repositories/device_repository.dart';
 import '../../data/repositories/note_repository.dart';
 import '../../data/repositories/op_log_repository.dart';
 import '../../data/repositories/sync_cursor_repository.dart';
+import '../services/app_settings_service.dart';
 import '../services/locale_service.dart';
 import '../services/theme_service.dart';
 import '../../domain/services/crypto_service.dart';
@@ -31,6 +32,7 @@ class AppServices {
     required this.isarService,
     required this.localeService,
     required this.themeService,
+    required this.appSettingsService,
     required this.localDeviceService,
     required this.noteRepository,
     required this.deviceRepository,
@@ -46,6 +48,7 @@ class AppServices {
   final IsarService isarService;
   final LocaleService localeService;
   final ThemeService themeService;
+  final AppSettingsService appSettingsService;
   final LocalDeviceService localDeviceService;
   final NoteRepository noteRepository;
   final DeviceRepository deviceRepository;
@@ -61,6 +64,7 @@ class AppServices {
   static Future<AppServices> create() async {
     final localeService = await LocaleService.create();
     final themeService = await ThemeService.create();
+    final appSettingsService = await AppSettingsService.create();
     final localDeviceService = await LocalDeviceService.create();
     final isarService = await IsarService.open();
 
@@ -69,6 +73,9 @@ class AppServices {
     final opLogRepository = OpLogRepository(isarService.db);
     final syncCursorRepository = SyncCursorRepository(isarService.db);
     final cryptoService = CryptoService();
+    if (appSettingsService.oneTimeConnectionNotifier.value) {
+      await deviceRepository.clearTrustedDevices();
+    }
 
     final discoveryService = DiscoveryService(
       localDeviceService: localDeviceService,
@@ -100,6 +107,7 @@ class AppServices {
       opLogRepository: opLogRepository,
       syncCursorRepository: syncCursorRepository,
       cryptoService: cryptoService,
+      appSettingsService: appSettingsService,
       discoveryService: discoveryService,
       syncServer: syncServer,
       syncClient: syncClient,
@@ -111,9 +119,13 @@ class AppServices {
   ///
   /// 关闭顺序与启动相反，避免出现已释放资源仍被后台任务访问的情况。
   Future<void> dispose() async {
+    if (appSettingsService.oneTimeConnectionNotifier.value) {
+      await deviceRepository.clearTrustedDevices();
+    }
     await syncEngine.dispose();
     localeService.dispose();
     themeService.dispose();
+    appSettingsService.dispose();
     await isarService.dispose();
   }
 }

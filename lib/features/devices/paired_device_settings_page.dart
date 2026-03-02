@@ -42,6 +42,7 @@ class _PairedDeviceSettingsPageState
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final services = ref.watch(appServicesProvider);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.pairedDeviceSettings)),
       body: Container(
@@ -80,6 +81,44 @@ class _PairedDeviceSettingsPageState
                     Text(
                       '${l10n.deviceIdLabel(widget.device.deviceId)}\n${widget.device.host}:${widget.device.port}',
                       style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+              IosGroupSection(
+                title: l10n.connectionAndSync,
+                child: Column(
+                  children: [
+                    ValueListenableBuilder<bool>(
+                      valueListenable:
+                          services.appSettingsService.oneTimeConnectionNotifier,
+                      builder: (context, enabled, _) {
+                        return SwitchListTile.adaptive(
+                          value: enabled,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(l10n.oneTimeConnection),
+                          subtitle: Text(l10n.oneTimeConnectionHint),
+                          onChanged:
+                              (value) => services.appSettingsService
+                                  .setOneTimeConnection(value),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ValueListenableBuilder<bool>(
+                      valueListenable:
+                          services.appSettingsService.autoSyncNotifier,
+                      builder: (context, enabled, _) {
+                        return SwitchListTile.adaptive(
+                          value: enabled,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(l10n.autoSync),
+                          subtitle: Text(l10n.autoSyncHint),
+                          onChanged:
+                              (value) =>
+                                  services.appSettingsService.setAutoSync(value),
+                        );
+                      },
                     ),
                   ],
                 ),
