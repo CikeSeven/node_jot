@@ -22,10 +22,15 @@ class NotesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final services = ref.watch(appServicesProvider);
+    final platform = Theme.of(context).platform;
+    final useSideRail =
+        platform == TargetPlatform.windows || platform == TargetPlatform.macOS;
     // 预留 FAB 与悬浮底栏的安全间距，避免被遮挡。
-    final fabBottomOffset = 84 + MediaQuery.paddingOf(context).bottom;
+    final fabBottomOffset =
+        useSideRail ? 16.0 : 84 + MediaQuery.paddingOf(context).bottom;
     // 预留列表底部安全间距，避免最后一项被悬浮底栏遮挡。
-    final listBottomOffset = 112 + MediaQuery.paddingOf(context).bottom;
+    final listBottomOffset =
+        useSideRail ? 16.0 : 112 + MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       // 右下角新建按钮（上移以避开底栏）。
       floatingActionButton: Padding(

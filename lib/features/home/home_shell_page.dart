@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../app/theme/app_colors.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/glass_bottom_nav.dart';
+import '../../ui/widgets/ios_frosted_panel.dart';
 import '../devices/devices_page.dart';
 import '../notes/notes_page.dart';
 import '../settings/settings_page.dart';
@@ -62,6 +64,25 @@ class _HomeShellPageState extends State<HomeShellPage> {
     );
   }
 
+  bool _useSideRail(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    return platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS;
+  }
+
+  Widget _buildPageView(List<Widget> pages) {
+    return PageView(
+      controller: _pageController,
+      physics: const NeverScrollableScrollPhysics(),
+      onPageChanged: (index) {
+        setState(() {
+          _currentIndex = index;
+        });
+      },
+      children: pages,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 三个主 Tab 页，通过 PageView 做动画切换。
@@ -76,6 +97,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
         child: SettingsPage(key: PageStorageKey<String>('tab_settings')),
       ),
     ];
+    final useSideRail = _useSideRail(context);
 
     // 底栏配置，顺序与 PageView 页面索引一一对应。
     final navItems = [
@@ -93,20 +115,34 @@ class _HomeShellPageState extends State<HomeShellPage> {
       ),
     ];
 
+    if (useSideRail) {
+      return Scaffold(
+        body: SafeArea(
+          child: Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 0, 12),
+                child: _DesktopSideRail(
+                  items: navItems,
+                  selectedIndex: _currentIndex,
+                  onTap: _onTapNav,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildPageView(pages),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: Stack(
         children: [
           // 主内容层：承载三个页面（禁用手势滑动，仅通过底栏切换）。
-          PageView(
-            controller: _pageController,
-            physics: const NeverScrollableScrollPhysics(),
-            onPageChanged: (index) {
-              setState(() {
-                _currentIndex = index;
-              });
-            },
-            children: pages,
-          ),
+          _buildPageView(pages),
           // 悬浮底部导航栏。
           Positioned(
             left: 0,
@@ -120,6 +156,60 @@ class _HomeShellPageState extends State<HomeShellPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DesktopSideRail extends StatelessWidget {
+  const _DesktopSideRail({
+    required this.items,
+    required this.selectedIndex,
+    required this.onTap,
+  });
+
+  final List<GlassBottomNavItem> items;
+  final int selectedIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IosFrostedPanel(
+      radius: 26,
+      blur: 18,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: NavigationRail(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onTap,
+        labelType: NavigationRailLabelType.all,
+        useIndicator: true,
+        indicatorColor: AppColors.primarySoft.withValues(alpha: 0.9),
+        selectedIconTheme: const IconThemeData(
+          color: AppColors.navActiveText,
+          size: 22,
+        ),
+        unselectedIconTheme: const IconThemeData(
+          color: AppColors.navInactive,
+          size: 20,
+        ),
+        selectedLabelTextStyle: const TextStyle(
+          color: AppColors.navActiveLabel,
+          fontWeight: FontWeight.w700,
+        ),
+        unselectedLabelTextStyle: const TextStyle(
+          color: AppColors.navInactive,
+          fontWeight: FontWeight.w600,
+        ),
+        destinations:
+            items
+                .map(
+                  (item) => NavigationRailDestination(
+                    icon: Icon(item.icon),
+                    selectedIcon: Icon(item.icon),
+                    label: Text(item.label),
+                  ),
+                )
+                .toList(),
       ),
     );
   }
