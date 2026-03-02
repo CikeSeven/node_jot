@@ -149,6 +149,107 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     ).push(MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)));
   }
 
+  Future<void> _archiveSingleNote({
+    required String noteId,
+    required AppServices services,
+    required AppLocalizations l10n,
+  }) async {
+    await services.syncEngine.archiveLocalNote(noteId);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.selectedArchived(1))),
+    );
+  }
+
+  Future<void> _deleteSingleNoteWithUndo({
+    required String noteId,
+    required AppServices services,
+    required AppLocalizations l10n,
+  }) async {
+    await services.syncEngine.deleteLocalNote(noteId);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(l10n.selectedDeleted(1)),
+        action: SnackBarAction(
+          label: l10n.undo,
+          onPressed: () async {
+            await services.syncEngine.restoreDeletedLocalNote(noteId);
+            if (!mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(l10n.selectedRestored(1))),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showNoteContextMenu({
+    required BuildContext context,
+    required Offset globalPosition,
+    required NoteEntity note,
+    required AppServices services,
+    required AppLocalizations l10n,
+  }) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final selected = await showMenu<_NoteContextAction>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem<_NoteContextAction>(
+          value: _NoteContextAction.archive,
+          child: Row(
+            children: [
+              const Icon(CupertinoIcons.archivebox, size: 18),
+              const SizedBox(width: 8),
+              Text(l10n.archive),
+            ],
+          ),
+        ),
+        PopupMenuItem<_NoteContextAction>(
+          value: _NoteContextAction.delete,
+          child: Row(
+            children: [
+              Icon(
+                CupertinoIcons.delete,
+                size: 18,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                l10n.delete,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (selected == null) {
+      return;
+    }
+    if (selected == _NoteContextAction.archive) {
+      await _archiveSingleNote(noteId: note.noteId, services: services, l10n: l10n);
+      return;
+    }
+    await _deleteSingleNoteWithUndo(
+      noteId: note.noteId,
+      services: services,
+      l10n: l10n,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -156,6 +257,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final platform = Theme.of(context).platform;
     final useSideRail =
         platform == TargetPlatform.windows || platform == TargetPlatform.macOS;
+    final desktopContextMenuEnabled =
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
     final fabBottomOffset =
         useSideRail ? 16.0 : 84 + MediaQuery.paddingOf(context).bottom;
     final listBottomOffset =
@@ -312,7 +417,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
                         final note = notes[index - 1];
                         final selected = _selectedNoteIds.contains(note.noteId);
-                            final card = Padding(
+                            Widget card = Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: AppSpacing.l,
                               ),
@@ -333,6 +438,22 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                     ),
                               ),
                             );
+
+                            if (!_isSelectionMode && desktopContextMenuEnabled) {
+                              card = GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onSecondaryTapDown: (details) async {
+                                  await _showNoteContextMenu(
+                                    context: context,
+                                    globalPosition: details.globalPosition,
+                                    note: note,
+                                    services: services,
+                                    l10n: l10n,
+                                  );
+                                },
+                                child: card,
+                              );
+                            }
 
                             if (_isSelectionMode) {
                               return card;
@@ -372,6 +493,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     );
   }
 }
+
+enum _NoteContextAction { archive, delete }
 
 class _SwipeActionBackground extends StatelessWidget {
   const _SwipeActionBackground({
