@@ -22,12 +22,7 @@ import 'sync_client.dart';
 import 'sync_server.dart';
 
 /// 已配对设备运行期连接状态。
-enum TrustedDeviceConnectionState {
-  unknown,
-  connecting,
-  connected,
-  invalid,
-}
+enum TrustedDeviceConnectionState { unknown, connecting, connected, invalid }
 
 /// 本地保存触发来源。
 enum SaveTriggerSource {
@@ -91,9 +86,8 @@ class SyncEngine {
   /// 当前显示给用户的 4 位配对码。
   final ValueNotifier<String> pairingCode;
   final ValueNotifier<Map<String, TrustedDeviceConnectionState>>
-  trustedConnectionStates = ValueNotifier<
-    Map<String, TrustedDeviceConnectionState>
-  >({});
+  trustedConnectionStates =
+      ValueNotifier<Map<String, TrustedDeviceConnectionState>>({});
 
   StreamSubscription<List<DiscoveredDevice>>? _discoverySub;
   StreamSubscription<List<DeviceEntity>>? _trustedSub;
@@ -121,7 +115,9 @@ class SyncEngine {
 
       // 为已配对设备确保存在配对设置配置。
       for (final trusted in trustedList) {
-        unawaited(_appSettingsService.ensureDeviceAutoSyncEnabled(trusted.deviceId));
+        unawaited(
+          _appSettingsService.ensureDeviceAutoSyncEnabled(trusted.deviceId),
+        );
         unawaited(
           _appSettingsService.ensureDeviceOneTimeConnectionEnabled(
             trusted.deviceId,
@@ -333,6 +329,45 @@ class SyncEngine {
         createdAt: DateTime.now().toUtc(),
       ),
     );
+  }
+
+  /// 归档本地笔记并写入 update 操作日志。
+  Future<void> archiveLocalNote(String noteId) async {
+    await _setArchiveState(noteId: noteId, archived: true);
+  }
+
+  /// 取消归档本地笔记并写入 update 操作日志。
+  Future<void> unarchiveLocalNote(String noteId) async {
+    await _setArchiveState(noteId: noteId, archived: false);
+  }
+
+  Future<void> _setArchiveState({
+    required String noteId,
+    required bool archived,
+  }) async {
+    final profile = _localDeviceService.profile;
+    final note = await _noteRepository.setArchivedStateLocal(
+      noteId: noteId,
+      editorDeviceId: profile.deviceId,
+      archived: archived,
+    );
+    if (note == null) {
+      return;
+    }
+
+    final lamport = await _nextLamport();
+    await _opLogRepository.appendOperation(
+      SyncOperation(
+        opId: newUuid(),
+        lamport: lamport,
+        deviceId: profile.deviceId,
+        noteId: note.noteId,
+        opType: 'update',
+        payload: _noteRepository.toSnapshot(note),
+        createdAt: DateTime.now().toUtc(),
+      ),
+    );
+    _scheduleAutoSync();
   }
 
   /// 调度自动同步（防抖）。
@@ -630,7 +665,10 @@ class SyncEngine {
     final shouldShowConnecting =
         force || currentState != TrustedDeviceConnectionState.connected;
     if (shouldShowConnecting) {
-      _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.connecting);
+      _setTrustedConnectionState(
+        deviceId,
+        TrustedDeviceConnectionState.connecting,
+      );
     }
 
     try {
@@ -641,7 +679,10 @@ class SyncEngine {
       );
       final wasConnected =
           currentState == TrustedDeviceConnectionState.connected;
-      _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.connected);
+      _setTrustedConnectionState(
+        deviceId,
+        TrustedDeviceConnectionState.connected,
+      );
       if (!wasConnected) {
         await _syncOnConnectIfEnabled(trusted);
       }
@@ -651,7 +692,10 @@ class SyncEngine {
         'trusted probe failed for ${device.displayName} (${device.host}:${device.port}): $e',
       );
       _connectAutoSyncedDeviceIds.remove(deviceId);
-      _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.invalid);
+      _setTrustedConnectionState(
+        deviceId,
+        TrustedDeviceConnectionState.invalid,
+      );
     } finally {
       _probingTrustedDeviceIds.remove(deviceId);
     }
@@ -691,9 +735,7 @@ class SyncEngine {
       trusted.deviceId,
     );
     final localOneTimeSetting = _appSettingsService
-        .getDeviceOneTimeConnectionSetting(
-      trusted.deviceId,
-    );
+        .getDeviceOneTimeConnectionSetting(trusted.deviceId);
 
     final requestEnvelope = await _cryptoService.encryptEnvelope(
       senderDeviceId: localProfile.deviceId,
@@ -715,7 +757,10 @@ class SyncEngine {
       port: port,
       message: requestEnvelope,
     );
-    final response = await _decryptIfSecure(responseEnvelope, trusted.sharedKey!);
+    final response = await _decryptIfSecure(
+      responseEnvelope,
+      trusted.sharedKey!,
+    );
     if (response['type'] != 'peer_status_response') {
       throw Exception(
         (response['message'] as String?) ?? 'Peer status request failed',
@@ -723,7 +768,8 @@ class SyncEngine {
     }
 
     final remoteAutoSyncEnabled = response['autoSyncEnabled'] == true;
-    final remoteAutoSyncUpdatedAtMs = _asInt(response['autoSyncUpdatedAtMs']) ?? 0;
+    final remoteAutoSyncUpdatedAtMs =
+        _asInt(response['autoSyncUpdatedAtMs']) ?? 0;
     final remoteAutoSyncUpdatedAt = DateTime.fromMillisecondsSinceEpoch(
       remoteAutoSyncUpdatedAtMs,
       isUtc: true,
@@ -744,11 +790,15 @@ class SyncEngine {
     final targetAutoSyncEnabled =
         autoSyncUseLocal ? localAutoSyncSetting.enabled : remoteAutoSyncEnabled;
     final targetAutoSyncUpdatedAt =
-        autoSyncUseLocal ? localAutoSyncSetting.updatedAt : remoteAutoSyncUpdatedAt;
+        autoSyncUseLocal
+            ? localAutoSyncSetting.updatedAt
+            : remoteAutoSyncUpdatedAt;
     final targetOneTimeEnabled =
         oneTimeUseLocal ? localOneTimeSetting.enabled : remoteOneTimeEnabled;
     final targetOneTimeUpdatedAt =
-        oneTimeUseLocal ? localOneTimeSetting.updatedAt : remoteOneTimeUpdatedAt;
+        oneTimeUseLocal
+            ? localOneTimeSetting.updatedAt
+            : remoteOneTimeUpdatedAt;
 
     if (!autoSyncUseLocal) {
       await _appSettingsService.setDeviceAutoSyncEnabled(
@@ -1093,9 +1143,8 @@ class SyncEngine {
     final autoSyncSetting = _appSettingsService.getDeviceAutoSyncSetting(
       requesterDeviceId,
     );
-    final oneTimeSetting = _appSettingsService.getDeviceOneTimeConnectionSetting(
-      requesterDeviceId,
-    );
+    final oneTimeSetting = _appSettingsService
+        .getDeviceOneTimeConnectionSetting(requesterDeviceId);
     return {
       'type': 'peer_status_response',
       'autoSyncEnabled': autoSyncSetting.enabled,
@@ -1156,8 +1205,7 @@ class SyncEngine {
       'autoSyncEnabled': autoSyncEnabled,
       'autoSyncUpdatedAtMs': autoSyncUpdatedAt.millisecondsSinceEpoch,
       'oneTimeConnectionEnabled': oneTimeEnabled,
-      'oneTimeConnectionUpdatedAtMs':
-          oneTimeUpdatedAt.millisecondsSinceEpoch,
+      'oneTimeConnectionUpdatedAtMs': oneTimeUpdatedAt.millisecondsSinceEpoch,
     };
   }
 

@@ -10,6 +10,7 @@ import '../../core/models/app_services.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
+import 'archived_notes_page.dart';
 import 'note_editor_page.dart';
 
 /// 笔记首页。
@@ -54,7 +55,7 @@ class NotesPage extends ConsumerWidget {
                   AppSpacing.l,
                   AppSpacing.m,
                   AppSpacing.l,
-                  0
+                  0,
                 ),
                 child: Row(
                   children: [
@@ -63,6 +64,16 @@ class NotesPage extends ConsumerWidget {
                         'NodeJot',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
+                    ),
+                    IconButton(
+                      tooltip: l10n.archivedNotes,
+                      onPressed:
+                          () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ArchivedNotesPage(),
+                            ),
+                          ),
+                      icon: const Icon(CupertinoIcons.archivebox),
                     ),
                   ],
                 ),
@@ -93,9 +104,8 @@ class NotesPage extends ConsumerWidget {
                                 Expanded(
                                   child: Text(
                                     l10n.tabNotes,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
                                   ),
                                 ),
                                 Text(
@@ -120,13 +130,32 @@ class NotesPage extends ConsumerWidget {
                         }
 
                         final note = notes[index - 1];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.l,
+                        return Dismissible(
+                          key: ValueKey<String>('active-${note.noteId}'),
+                          direction: DismissDirection.endToStart,
+                          background: _SwipeActionBackground(
+                            label: l10n.archive,
+                            icon: CupertinoIcons.archivebox_fill,
+                            color: const Color(0xFF9C6BD8),
                           ),
-                          child: _NoteCard(
-                            note: note,
-                            onTap: () => _openEditor(context, note.noteId),
+                          onDismissed: (_) async {
+                            await services.syncEngine.archiveLocalNote(
+                              note.noteId,
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(l10n.noteArchived)),
+                              );
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.l,
+                            ),
+                            child: _NoteCard(
+                              note: note,
+                              onTap: () => _openEditor(context, note.noteId),
+                            ),
                           ),
                         );
                       },
@@ -145,6 +174,42 @@ class NotesPage extends ConsumerWidget {
   void _openEditor(BuildContext context, [String? noteId]) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)),
+    );
+  }
+}
+
+class _SwipeActionBackground extends StatelessWidget {
+  const _SwipeActionBackground({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      alignment: Alignment.centerRight,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
     );
   }
 }

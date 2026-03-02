@@ -18,6 +18,7 @@ class NoteEntity {
   late String contentMd;
   late DateTime updatedAt;
   DateTime? deletedAt;
+  DateTime? archivedAt;
   late String lastEditorDeviceId;
   late int baseRevision;
   late int headRevision;

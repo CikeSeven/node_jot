@@ -26,6 +26,12 @@ class AppLocalizations {
 
   String get appTitle => 'NodeJot';
   String get tabNotes => _isZh ? '笔记' : 'Notes';
+  String get archive => _isZh ? '归档' : 'Archive';
+  String get unarchive => _isZh ? '取消归档' : 'Unarchive';
+  String get archivedNotes => _isZh ? '归档笔记' : 'Archived Notes';
+  String get noArchivedNotes => _isZh ? '暂无归档笔记。' : 'No archived notes.';
+  String get noteArchived => _isZh ? '已归档' : 'Archived';
+  String get noteUnarchived => _isZh ? '已取消归档' : 'Unarchived';
   String get tabDevices => _isZh ? '设备' : 'Devices';
   String get tabSettings => _isZh ? '设置' : 'Settings';
   String get conflicts => _isZh ? '冲突' : 'Conflicts';
@@ -100,8 +106,7 @@ class AppLocalizations {
   String get connecting => _isZh ? '连接中' : 'Connecting';
   String get notConnected => _isZh ? '未连接' : 'Not Connected';
   String get pairingInvalid => _isZh ? '配对失效' : 'Pairing invalid';
-  String get autoSyncEnabledNotice =>
-      _isZh ? '已开启自动同步' : 'Auto Sync Enabled';
+  String get autoSyncEnabledNotice => _isZh ? '已开启自动同步' : 'Auto Sync Enabled';
   String get sync => _isZh ? '同步' : 'Sync';
   String get syncDone => _isZh ? '同步完成' : 'Sync done';
   String syncFailedWithReason(String reason) =>

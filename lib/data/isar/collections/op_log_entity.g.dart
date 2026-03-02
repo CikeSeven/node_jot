@@ -27,15 +27,31 @@ const OpLogEntitySchema = CollectionSchema(
       name: r'deviceId',
       type: IsarType.string,
     ),
-    r'lamport': PropertySchema(id: 2, name: r'lamport', type: IsarType.long),
-    r'noteId': PropertySchema(id: 3, name: r'noteId', type: IsarType.string),
-    r'opId': PropertySchema(id: 4, name: r'opId', type: IsarType.string),
-    r'opType': PropertySchema(id: 5, name: r'opType', type: IsarType.string),
+    r'lamport': PropertySchema(
+      id: 2,
+      name: r'lamport',
+      type: IsarType.long,
+    ),
+    r'noteId': PropertySchema(
+      id: 3,
+      name: r'noteId',
+      type: IsarType.string,
+    ),
+    r'opId': PropertySchema(
+      id: 4,
+      name: r'opId',
+      type: IsarType.string,
+    ),
+    r'opType': PropertySchema(
+      id: 5,
+      name: r'opType',
+      type: IsarType.string,
+    ),
     r'payloadJson': PropertySchema(
       id: 6,
       name: r'payloadJson',
       type: IsarType.string,
-    ),
+    )
   },
   estimateSize: _opLogEntityEstimateSize,
   serialize: _opLogEntitySerialize,
@@ -53,7 +69,7 @@ const OpLogEntitySchema = CollectionSchema(
           name: r'opId',
           type: IndexType.hash,
           caseSensitive: true,
-        ),
+        )
       ],
     ),
     r'lamport': IndexSchema(
@@ -66,9 +82,9 @@ const OpLogEntitySchema = CollectionSchema(
           name: r'lamport',
           type: IndexType.value,
           caseSensitive: false,
-        ),
+        )
       ],
-    ),
+    )
   },
   links: {},
   embeddedSchemas: {},
@@ -160,10 +176,7 @@ List<IsarLinkBase<dynamic>> _opLogEntityGetLinks(OpLogEntity object) {
 }
 
 void _opLogEntityAttach(
-  IsarCollection<dynamic> col,
-  Id id,
-  OpLogEntity object,
-) {
+    IsarCollection<dynamic> col, Id id, OpLogEntity object) {
   object.isarId = id;
 }
 
@@ -216,10 +229,8 @@ extension OpLogEntityByIndex on IsarCollection<OpLogEntity> {
     return putAllByIndex(r'opId', objects);
   }
 
-  List<Id> putAllByOpIdSync(
-    List<OpLogEntity> objects, {
-    bool saveLinks = true,
-  }) {
+  List<Id> putAllByOpIdSync(List<OpLogEntity> objects,
+      {bool saveLinks = true}) {
     return putAllByIndexSync(r'opId', objects, saveLinks: saveLinks);
   }
 }
@@ -244,18 +255,17 @@ extension OpLogEntityQueryWhereSort
 extension OpLogEntityQueryWhere
     on QueryBuilder<OpLogEntity, OpLogEntity, QWhereClause> {
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> isarIdEqualTo(
-    Id isarId,
-  ) {
+      Id isarId) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IdWhereClause.between(lower: isarId, upper: isarId),
-      );
+      return query.addWhereClause(IdWhereClause.between(
+        lower: isarId,
+        upper: isarId,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> isarIdNotEqualTo(
-    Id isarId,
-  ) {
+      Id isarId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
@@ -278,9 +288,8 @@ extension OpLogEntityQueryWhere
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> isarIdGreaterThan(
-    Id isarId, {
-    bool include = false,
-  }) {
+      Id isarId,
+      {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.greaterThan(lower: isarId, includeLower: include),
@@ -289,9 +298,8 @@ extension OpLogEntityQueryWhere
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> isarIdLessThan(
-    Id isarId, {
-    bool include = false,
-  }) {
+      Id isarId,
+      {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.lessThan(upper: isarId, includeUpper: include),
@@ -306,121 +314,101 @@ extension OpLogEntityQueryWhere
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IdWhereClause.between(
-          lower: lowerIsarId,
-          includeLower: includeLower,
-          upper: upperIsarId,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addWhereClause(IdWhereClause.between(
+        lower: lowerIsarId,
+        includeLower: includeLower,
+        upper: upperIsarId,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> opIdEqualTo(
-    String opId,
-  ) {
+      String opId) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IndexWhereClause.equalTo(indexName: r'opId', value: [opId]),
-      );
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'opId',
+        value: [opId],
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> opIdNotEqualTo(
-    String opId,
-  ) {
+      String opId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'opId',
-                lower: [],
-                upper: [opId],
-                includeUpper: false,
-              ),
-            )
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'opId',
-                lower: [opId],
-                includeLower: false,
-                upper: [],
-              ),
-            );
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'opId',
+              lower: [],
+              upper: [opId],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'opId',
+              lower: [opId],
+              includeLower: false,
+              upper: [],
+            ));
       } else {
         return query
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'opId',
-                lower: [opId],
-                includeLower: false,
-                upper: [],
-              ),
-            )
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'opId',
-                lower: [],
-                upper: [opId],
-                includeUpper: false,
-              ),
-            );
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'opId',
+              lower: [opId],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'opId',
+              lower: [],
+              upper: [opId],
+              includeUpper: false,
+            ));
       }
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> lamportEqualTo(
-    int lamport,
-  ) {
+      int lamport) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IndexWhereClause.equalTo(indexName: r'lamport', value: [lamport]),
-      );
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'lamport',
+        value: [lamport],
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterWhereClause> lamportNotEqualTo(
-    int lamport,
-  ) {
+      int lamport) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'lamport',
-                lower: [],
-                upper: [lamport],
-                includeUpper: false,
-              ),
-            )
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'lamport',
-                lower: [lamport],
-                includeLower: false,
-                upper: [],
-              ),
-            );
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lamport',
+              lower: [],
+              upper: [lamport],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lamport',
+              lower: [lamport],
+              includeLower: false,
+              upper: [],
+            ));
       } else {
         return query
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'lamport',
-                lower: [lamport],
-                includeLower: false,
-                upper: [],
-              ),
-            )
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'lamport',
-                lower: [],
-                upper: [lamport],
-                includeUpper: false,
-              ),
-            );
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lamport',
+              lower: [lamport],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lamport',
+              lower: [],
+              upper: [lamport],
+              includeUpper: false,
+            ));
       }
     });
   }
@@ -430,14 +418,12 @@ extension OpLogEntityQueryWhere
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IndexWhereClause.between(
-          indexName: r'lamport',
-          lower: [lamport],
-          includeLower: include,
-          upper: [],
-        ),
-      );
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'lamport',
+        lower: [lamport],
+        includeLower: include,
+        upper: [],
+      ));
     });
   }
 
@@ -446,14 +432,12 @@ extension OpLogEntityQueryWhere
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IndexWhereClause.between(
-          indexName: r'lamport',
-          lower: [],
-          upper: [lamport],
-          includeUpper: include,
-        ),
-      );
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'lamport',
+        lower: [],
+        upper: [lamport],
+        includeUpper: include,
+      ));
     });
   }
 
@@ -464,15 +448,13 @@ extension OpLogEntityQueryWhere
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IndexWhereClause.between(
-          indexName: r'lamport',
-          lower: [lowerLamport],
-          includeLower: includeLower,
-          upper: [upperLamport],
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'lamport',
+        lower: [lowerLamport],
+        includeLower: includeLower,
+        upper: [upperLamport],
+        includeUpper: includeUpper,
+      ));
     });
   }
 }
@@ -480,57 +462,58 @@ extension OpLogEntityQueryWhere
 extension OpLogEntityQueryFilter
     on QueryBuilder<OpLogEntity, OpLogEntity, QFilterCondition> {
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  createdAtEqualTo(DateTime value) {
+      createdAtEqualTo(DateTime value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'createdAt', value: value),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'createdAt',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  createdAtGreaterThan(DateTime value, {bool include = false}) {
+      createdAtGreaterThan(
+    DateTime value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'createdAt',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'createdAt',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  createdAtLessThan(DateTime value, {bool include = false}) {
+      createdAtLessThan(
+    DateTime value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'createdAt',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'createdAt',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  createdAtBetween(
+      createdAtBetween(
     DateTime lower,
     DateTime upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'createdAt',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'createdAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
@@ -539,49 +522,43 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'deviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'deviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  deviceIdGreaterThan(
+      deviceIdGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'deviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'deviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  deviceIdLessThan(
+      deviceIdLessThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'deviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'deviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -593,111 +570,109 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'deviceId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'deviceId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  deviceIdStartsWith(String value, {bool caseSensitive = true}) {
+      deviceIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'deviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'deviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  deviceIdEndsWith(String value, {bool caseSensitive = true}) {
+      deviceIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'deviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'deviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  deviceIdContains(String value, {bool caseSensitive = true}) {
+      deviceIdContains(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'deviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'deviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> deviceIdMatches(
-    String pattern, {
-    bool caseSensitive = true,
-  }) {
+      String pattern,
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'deviceId',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'deviceId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  deviceIdIsEmpty() {
+      deviceIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'deviceId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'deviceId',
+        value: '',
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  deviceIdIsNotEmpty() {
+      deviceIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'deviceId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'deviceId',
+        value: '',
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> isarIdEqualTo(
-    Id value,
-  ) {
+      Id value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'isarId', value: value),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isarId',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  isarIdGreaterThan(Id value, {bool include = false}) {
+      isarIdGreaterThan(
+    Id value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'isarId',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'isarId',
+        value: value,
+      ));
     });
   }
 
@@ -706,13 +681,11 @@ extension OpLogEntityQueryFilter
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'isarId',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'isarId',
+        value: value,
+      ));
     });
   }
 
@@ -723,38 +696,37 @@ extension OpLogEntityQueryFilter
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'isarId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'isarId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> lamportEqualTo(
-    int value,
-  ) {
+      int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'lamport', value: value),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lamport',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  lamportGreaterThan(int value, {bool include = false}) {
+      lamportGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'lamport',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lamport',
+        value: value,
+      ));
     });
   }
 
@@ -763,13 +735,11 @@ extension OpLogEntityQueryFilter
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'lamport',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lamport',
+        value: value,
+      ));
     });
   }
 
@@ -780,15 +750,13 @@ extension OpLogEntityQueryFilter
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'lamport',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lamport',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
@@ -797,31 +765,27 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'noteId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'noteId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  noteIdGreaterThan(
+      noteIdGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'noteId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'noteId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -831,14 +795,12 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'noteId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'noteId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -850,29 +812,28 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'noteId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'noteId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  noteIdStartsWith(String value, {bool caseSensitive = true}) {
+      noteIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'noteId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'noteId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -881,61 +842,55 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'noteId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'noteId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> noteIdContains(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+      String value,
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'noteId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'noteId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> noteIdMatches(
-    String pattern, {
-    bool caseSensitive = true,
-  }) {
+      String pattern,
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'noteId',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'noteId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  noteIdIsEmpty() {
+      noteIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'noteId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'noteId',
+        value: '',
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  noteIdIsNotEmpty() {
+      noteIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'noteId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'noteId',
+        value: '',
+      ));
     });
   }
 
@@ -944,13 +899,11 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'opId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'opId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -960,14 +913,12 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'opId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'opId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -977,14 +928,12 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'opId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'opId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -996,16 +945,14 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'opId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'opId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -1014,13 +961,11 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'opId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'opId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -1029,60 +974,54 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'opId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'opId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> opIdContains(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+      String value,
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'opId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'opId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> opIdMatches(
-    String pattern, {
-    bool caseSensitive = true,
-  }) {
+      String pattern,
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'opId',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'opId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> opIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'opId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'opId',
+        value: '',
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  opIdIsNotEmpty() {
+      opIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'opId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'opId',
+        value: '',
+      ));
     });
   }
 
@@ -1091,31 +1030,27 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'opType',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'opType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  opTypeGreaterThan(
+      opTypeGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'opType',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'opType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -1125,14 +1060,12 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'opType',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'opType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -1144,29 +1077,28 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'opType',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'opType',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  opTypeStartsWith(String value, {bool caseSensitive = true}) {
+      opTypeStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'opType',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'opType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
@@ -1175,115 +1107,106 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'opType',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'opType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> opTypeContains(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+      String value,
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'opType',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'opType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition> opTypeMatches(
-    String pattern, {
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'opType',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
+      opTypeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'opType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
+      opTypeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'opType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
+      payloadJsonEqualTo(
+    String value, {
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'opType',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'payloadJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  opTypeIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'opType', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  opTypeIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'opType', value: ''),
-      );
-    });
-  }
-
-  QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonEqualTo(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'payloadJson',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
-    });
-  }
-
-  QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonGreaterThan(
+      payloadJsonGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'payloadJson',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'payloadJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonLessThan(
+      payloadJsonLessThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'payloadJson',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'payloadJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonBetween(
+      payloadJsonBetween(
     String lower,
     String upper, {
     bool includeLower = true,
@@ -1291,86 +1214,84 @@ extension OpLogEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'payloadJson',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'payloadJson',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonStartsWith(String value, {bool caseSensitive = true}) {
+      payloadJsonStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'payloadJson',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'payloadJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonEndsWith(String value, {bool caseSensitive = true}) {
+      payloadJsonEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'payloadJson',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'payloadJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonContains(String value, {bool caseSensitive = true}) {
+      payloadJsonContains(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'payloadJson',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'payloadJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonMatches(String pattern, {bool caseSensitive = true}) {
+      payloadJsonMatches(String pattern, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'payloadJson',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'payloadJson',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonIsEmpty() {
+      payloadJsonIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'payloadJson', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'payloadJson',
+        value: '',
+      ));
     });
   }
 
   QueryBuilder<OpLogEntity, OpLogEntity, QAfterFilterCondition>
-  payloadJsonIsNotEmpty() {
+      payloadJsonIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'payloadJson', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'payloadJson',
+        value: '',
+      ));
     });
   }
 }
@@ -1575,9 +1496,8 @@ extension OpLogEntityQueryWhereDistinct
     });
   }
 
-  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByDeviceId({
-    bool caseSensitive = true,
-  }) {
+  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByDeviceId(
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'deviceId', caseSensitive: caseSensitive);
     });
@@ -1589,33 +1509,29 @@ extension OpLogEntityQueryWhereDistinct
     });
   }
 
-  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByNoteId({
-    bool caseSensitive = true,
-  }) {
+  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByNoteId(
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'noteId', caseSensitive: caseSensitive);
     });
   }
 
-  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByOpId({
-    bool caseSensitive = true,
-  }) {
+  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByOpId(
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'opId', caseSensitive: caseSensitive);
     });
   }
 
-  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByOpType({
-    bool caseSensitive = true,
-  }) {
+  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByOpType(
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'opType', caseSensitive: caseSensitive);
     });
   }
 
-  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByPayloadJson({
-    bool caseSensitive = true,
-  }) {
+  QueryBuilder<OpLogEntity, OpLogEntity, QDistinct> distinctByPayloadJson(
+      {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'payloadJson', caseSensitive: caseSensitive);
     });

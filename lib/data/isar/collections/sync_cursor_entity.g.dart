@@ -31,7 +31,7 @@ const SyncCursorEntitySchema = CollectionSchema(
       id: 2,
       name: r'peerDeviceId',
       type: IsarType.string,
-    ),
+    )
   },
   estimateSize: _syncCursorEntityEstimateSize,
   serialize: _syncCursorEntitySerialize,
@@ -49,9 +49,9 @@ const SyncCursorEntitySchema = CollectionSchema(
           name: r'peerDeviceId',
           type: IndexType.hash,
           caseSensitive: true,
-        ),
+        )
       ],
-    ),
+    )
   },
   links: {},
   embeddedSchemas: {},
@@ -123,10 +123,7 @@ List<IsarLinkBase<dynamic>> _syncCursorEntityGetLinks(SyncCursorEntity object) {
 }
 
 void _syncCursorEntityAttach(
-  IsarCollection<dynamic> col,
-  Id id,
-  SyncCursorEntity object,
-) {
+    IsarCollection<dynamic> col, Id id, SyncCursorEntity object) {
   object.isarId = id;
 }
 
@@ -148,15 +145,13 @@ extension SyncCursorEntityByIndex on IsarCollection<SyncCursorEntity> {
   }
 
   Future<List<SyncCursorEntity?>> getAllByPeerDeviceId(
-    List<String> peerDeviceIdValues,
-  ) {
+      List<String> peerDeviceIdValues) {
     final values = peerDeviceIdValues.map((e) => [e]).toList();
     return getAllByIndex(r'peerDeviceId', values);
   }
 
   List<SyncCursorEntity?> getAllByPeerDeviceIdSync(
-    List<String> peerDeviceIdValues,
-  ) {
+      List<String> peerDeviceIdValues) {
     final values = peerDeviceIdValues.map((e) => [e]).toList();
     return getAllByIndexSync(r'peerDeviceId', values);
   }
@@ -183,10 +178,8 @@ extension SyncCursorEntityByIndex on IsarCollection<SyncCursorEntity> {
     return putAllByIndex(r'peerDeviceId', objects);
   }
 
-  List<Id> putAllByPeerDeviceIdSync(
-    List<SyncCursorEntity> objects, {
-    bool saveLinks = true,
-  }) {
+  List<Id> putAllByPeerDeviceIdSync(List<SyncCursorEntity> objects,
+      {bool saveLinks = true}) {
     return putAllByIndexSync(r'peerDeviceId', objects, saveLinks: saveLinks);
   }
 }
@@ -203,16 +196,17 @@ extension SyncCursorEntityQueryWhereSort
 extension SyncCursorEntityQueryWhere
     on QueryBuilder<SyncCursorEntity, SyncCursorEntity, QWhereClause> {
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterWhereClause>
-  isarIdEqualTo(Id isarId) {
+      isarIdEqualTo(Id isarId) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IdWhereClause.between(lower: isarId, upper: isarId),
-      );
+      return query.addWhereClause(IdWhereClause.between(
+        lower: isarId,
+        upper: isarId,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterWhereClause>
-  isarIdNotEqualTo(Id isarId) {
+      isarIdNotEqualTo(Id isarId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
@@ -235,7 +229,7 @@ extension SyncCursorEntityQueryWhere
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterWhereClause>
-  isarIdGreaterThan(Id isarId, {bool include = false}) {
+      isarIdGreaterThan(Id isarId, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.greaterThan(lower: isarId, includeLower: include),
@@ -244,7 +238,7 @@ extension SyncCursorEntityQueryWhere
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterWhereClause>
-  isarIdLessThan(Id isarId, {bool include = false}) {
+      isarIdLessThan(Id isarId, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.lessThan(upper: isarId, includeUpper: include),
@@ -253,75 +247,63 @@ extension SyncCursorEntityQueryWhere
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterWhereClause>
-  isarIdBetween(
+      isarIdBetween(
     Id lowerIsarId,
     Id upperIsarId, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IdWhereClause.between(
-          lower: lowerIsarId,
-          includeLower: includeLower,
-          upper: upperIsarId,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addWhereClause(IdWhereClause.between(
+        lower: lowerIsarId,
+        includeLower: includeLower,
+        upper: upperIsarId,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterWhereClause>
-  peerDeviceIdEqualTo(String peerDeviceId) {
+      peerDeviceIdEqualTo(String peerDeviceId) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        IndexWhereClause.equalTo(
-          indexName: r'peerDeviceId',
-          value: [peerDeviceId],
-        ),
-      );
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'peerDeviceId',
+        value: [peerDeviceId],
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterWhereClause>
-  peerDeviceIdNotEqualTo(String peerDeviceId) {
+      peerDeviceIdNotEqualTo(String peerDeviceId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'peerDeviceId',
-                lower: [],
-                upper: [peerDeviceId],
-                includeUpper: false,
-              ),
-            )
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'peerDeviceId',
-                lower: [peerDeviceId],
-                includeLower: false,
-                upper: [],
-              ),
-            );
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'peerDeviceId',
+              lower: [],
+              upper: [peerDeviceId],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'peerDeviceId',
+              lower: [peerDeviceId],
+              includeLower: false,
+              upper: [],
+            ));
       } else {
         return query
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'peerDeviceId',
-                lower: [peerDeviceId],
-                includeLower: false,
-                upper: [],
-              ),
-            )
-            .addWhereClause(
-              IndexWhereClause.between(
-                indexName: r'peerDeviceId',
-                lower: [],
-                upper: [peerDeviceId],
-                includeUpper: false,
-              ),
-            );
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'peerDeviceId',
+              lower: [peerDeviceId],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'peerDeviceId',
+              lower: [],
+              upper: [peerDeviceId],
+              includeUpper: false,
+            ));
       }
     });
   }
@@ -330,239 +312,239 @@ extension SyncCursorEntityQueryWhere
 extension SyncCursorEntityQueryFilter
     on QueryBuilder<SyncCursorEntity, SyncCursorEntity, QFilterCondition> {
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  isarIdEqualTo(Id value) {
+      isarIdEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'isarId', value: value),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isarId',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  isarIdGreaterThan(Id value, {bool include = false}) {
+      isarIdGreaterThan(
+    Id value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'isarId',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'isarId',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  isarIdLessThan(Id value, {bool include = false}) {
+      isarIdLessThan(
+    Id value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'isarId',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'isarId',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  isarIdBetween(
+      isarIdBetween(
     Id lower,
     Id upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'isarId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'isarId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastLamportSeenEqualTo(int value) {
+      lastLamportSeenEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'lastLamportSeen', value: value),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastLamportSeen',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastLamportSeenGreaterThan(int value, {bool include = false}) {
+      lastLamportSeenGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'lastLamportSeen',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastLamportSeen',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastLamportSeenLessThan(int value, {bool include = false}) {
+      lastLamportSeenLessThan(
+    int value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'lastLamportSeen',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastLamportSeen',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastLamportSeenBetween(
+      lastLamportSeenBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'lastLamportSeen',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastLamportSeen',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastSyncAtIsNull() {
+      lastSyncAtIsNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        const FilterCondition.isNull(property: r'lastSyncAt'),
-      );
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastSyncAt',
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastSyncAtIsNotNull() {
+      lastSyncAtIsNotNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        const FilterCondition.isNotNull(property: r'lastSyncAt'),
-      );
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastSyncAt',
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastSyncAtEqualTo(DateTime? value) {
+      lastSyncAtEqualTo(DateTime? value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'lastSyncAt', value: value),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastSyncAt',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastSyncAtGreaterThan(DateTime? value, {bool include = false}) {
+      lastSyncAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'lastSyncAt',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastSyncAt',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastSyncAtLessThan(DateTime? value, {bool include = false}) {
+      lastSyncAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'lastSyncAt',
-          value: value,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastSyncAt',
+        value: value,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  lastSyncAtBetween(
+      lastSyncAtBetween(
     DateTime? lower,
     DateTime? upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'lastSyncAt',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastSyncAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdEqualTo(String value, {bool caseSensitive = true}) {
+      peerDeviceIdEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(
-          property: r'peerDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'peerDeviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdGreaterThan(
+      peerDeviceIdGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(
-          include: include,
-          property: r'peerDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'peerDeviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdLessThan(
+      peerDeviceIdLessThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.lessThan(
-          include: include,
-          property: r'peerDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'peerDeviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdBetween(
+      peerDeviceIdBetween(
     String lower,
     String upper, {
     bool includeLower = true,
@@ -570,86 +552,84 @@ extension SyncCursorEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.between(
-          property: r'peerDeviceId',
-          lower: lower,
-          includeLower: includeLower,
-          upper: upper,
-          includeUpper: includeUpper,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'peerDeviceId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdStartsWith(String value, {bool caseSensitive = true}) {
+      peerDeviceIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.startsWith(
-          property: r'peerDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'peerDeviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdEndsWith(String value, {bool caseSensitive = true}) {
+      peerDeviceIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.endsWith(
-          property: r'peerDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'peerDeviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdContains(String value, {bool caseSensitive = true}) {
+      peerDeviceIdContains(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.contains(
-          property: r'peerDeviceId',
-          value: value,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'peerDeviceId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdMatches(String pattern, {bool caseSensitive = true}) {
+      peerDeviceIdMatches(String pattern, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.matches(
-          property: r'peerDeviceId',
-          wildcard: pattern,
-          caseSensitive: caseSensitive,
-        ),
-      );
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'peerDeviceId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdIsEmpty() {
+      peerDeviceIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.equalTo(property: r'peerDeviceId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'peerDeviceId',
+        value: '',
+      ));
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterFilterCondition>
-  peerDeviceIdIsNotEmpty() {
+      peerDeviceIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(
-        FilterCondition.greaterThan(property: r'peerDeviceId', value: ''),
-      );
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'peerDeviceId',
+        value: '',
+      ));
     });
   }
 }
@@ -663,42 +643,42 @@ extension SyncCursorEntityQueryLinks
 extension SyncCursorEntityQuerySortBy
     on QueryBuilder<SyncCursorEntity, SyncCursorEntity, QSortBy> {
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  sortByLastLamportSeen() {
+      sortByLastLamportSeen() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastLamportSeen', Sort.asc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  sortByLastLamportSeenDesc() {
+      sortByLastLamportSeenDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastLamportSeen', Sort.desc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  sortByLastSyncAt() {
+      sortByLastSyncAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastSyncAt', Sort.asc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  sortByLastSyncAtDesc() {
+      sortByLastSyncAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastSyncAt', Sort.desc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  sortByPeerDeviceId() {
+      sortByPeerDeviceId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'peerDeviceId', Sort.asc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  sortByPeerDeviceIdDesc() {
+      sortByPeerDeviceIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'peerDeviceId', Sort.desc);
     });
@@ -708,56 +688,56 @@ extension SyncCursorEntityQuerySortBy
 extension SyncCursorEntityQuerySortThenBy
     on QueryBuilder<SyncCursorEntity, SyncCursorEntity, QSortThenBy> {
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByIsarId() {
+      thenByIsarId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isarId', Sort.asc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByIsarIdDesc() {
+      thenByIsarIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isarId', Sort.desc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByLastLamportSeen() {
+      thenByLastLamportSeen() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastLamportSeen', Sort.asc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByLastLamportSeenDesc() {
+      thenByLastLamportSeenDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastLamportSeen', Sort.desc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByLastSyncAt() {
+      thenByLastSyncAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastSyncAt', Sort.asc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByLastSyncAtDesc() {
+      thenByLastSyncAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastSyncAt', Sort.desc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByPeerDeviceId() {
+      thenByPeerDeviceId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'peerDeviceId', Sort.asc);
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QAfterSortBy>
-  thenByPeerDeviceIdDesc() {
+      thenByPeerDeviceIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'peerDeviceId', Sort.desc);
     });
@@ -767,21 +747,21 @@ extension SyncCursorEntityQuerySortThenBy
 extension SyncCursorEntityQueryWhereDistinct
     on QueryBuilder<SyncCursorEntity, SyncCursorEntity, QDistinct> {
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QDistinct>
-  distinctByLastLamportSeen() {
+      distinctByLastLamportSeen() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lastLamportSeen');
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QDistinct>
-  distinctByLastSyncAt() {
+      distinctByLastSyncAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lastSyncAt');
     });
   }
 
   QueryBuilder<SyncCursorEntity, SyncCursorEntity, QDistinct>
-  distinctByPeerDeviceId({bool caseSensitive = true}) {
+      distinctByPeerDeviceId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'peerDeviceId', caseSensitive: caseSensitive);
     });
@@ -797,21 +777,21 @@ extension SyncCursorEntityQueryProperty
   }
 
   QueryBuilder<SyncCursorEntity, int, QQueryOperations>
-  lastLamportSeenProperty() {
+      lastLamportSeenProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'lastLamportSeen');
     });
   }
 
   QueryBuilder<SyncCursorEntity, DateTime?, QQueryOperations>
-  lastSyncAtProperty() {
+      lastSyncAtProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'lastSyncAt');
     });
   }
 
   QueryBuilder<SyncCursorEntity, String, QQueryOperations>
-  peerDeviceIdProperty() {
+      peerDeviceIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'peerDeviceId');
     });

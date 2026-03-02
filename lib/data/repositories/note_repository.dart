@@ -48,6 +48,18 @@ class NoteRepository {
         .where()
         .filter()
         .deletedAtIsNull()
+        .archivedAtIsNull()
+        .sortByUpdatedAtDesc()
+        .watch(fireImmediately: true);
+  }
+
+  /// 监听已归档且未删除的笔记（按更新时间倒序）。
+  Stream<List<NoteEntity>> watchArchivedNotes() {
+    return _db.noteEntitys
+        .where()
+        .filter()
+        .deletedAtIsNull()
+        .archivedAtIsNotNull()
         .sortByUpdatedAtDesc()
         .watch(fireImmediately: true);
   }
@@ -59,6 +71,7 @@ class NoteRepository {
         .filter()
         .isConflictCopyEqualTo(true)
         .deletedAtIsNull()
+        .archivedAtIsNull()
         .sortByUpdatedAtDesc()
         .watch(fireImmediately: true);
   }
@@ -121,6 +134,7 @@ class NoteRepository {
               ..contentMd = contentMd
               ..updatedAt = now
               ..deletedAt = null
+              ..archivedAt = null
               ..lastEditorDeviceId = editorDeviceId
               ..baseRevision = 0
               ..headRevision = 1
@@ -146,6 +160,7 @@ class NoteRepository {
           )
           ..updatedAt = now
           ..deletedAt = null
+          ..archivedAt = null
           ..lastEditorDeviceId = editorDeviceId
           ..baseRevision = existing.headRevision
           ..headRevision = existing.headRevision + 1
@@ -166,6 +181,7 @@ class NoteRepository {
         ..contentMd = contentMd
         ..updatedAt = now
         ..deletedAt = null
+        ..archivedAt = null
         ..lastEditorDeviceId = editorDeviceId
         ..baseRevision = existing.headRevision
         ..headRevision = existing.headRevision + 1;
@@ -180,6 +196,36 @@ class NoteRepository {
     });
 
     return outcome;
+  }
+
+  /// 本地更新归档状态。
+  ///
+  /// - `archived = true`：归档；
+  /// - `archived = false`：取消归档。
+  Future<NoteEntity?> setArchivedStateLocal({
+    required String noteId,
+    required String editorDeviceId,
+    required bool archived,
+  }) async {
+    NoteEntity? updated;
+    await _db.writeTxn(() async {
+      final existing =
+          await _db.noteEntitys.where().noteIdEqualTo(noteId).findFirst();
+      if (existing == null || existing.deletedAt != null) {
+        return;
+      }
+
+      final now = DateTime.now().toUtc();
+      existing
+        ..archivedAt = archived ? now : null
+        ..updatedAt = now
+        ..lastEditorDeviceId = editorDeviceId
+        ..baseRevision = existing.headRevision
+        ..headRevision = existing.headRevision + 1;
+      await _db.noteEntitys.put(existing);
+      updated = existing;
+    });
+    return updated;
   }
 
   /// 本地软删除笔记。
@@ -218,6 +264,9 @@ class NoteRepository {
     final deletedAtRaw = snapshot['deletedAt'] as String?;
     final deletedAt =
         deletedAtRaw == null ? null : DateTime.parse(deletedAtRaw).toUtc();
+    final archivedAtRaw = snapshot['archivedAt'] as String?;
+    final archivedAt =
+        archivedAtRaw == null ? null : DateTime.parse(archivedAtRaw).toUtc();
     final lastEditorDeviceId = snapshot['lastEditorDeviceId'] as String;
     final baseRevision = snapshot['baseRevision'] as int;
     final headRevision = snapshot['headRevision'] as int;
@@ -237,6 +286,7 @@ class NoteRepository {
               ..contentMd = content
               ..updatedAt = updatedAt
               ..deletedAt = deletedAt
+              ..archivedAt = archivedAt
               ..lastEditorDeviceId = lastEditorDeviceId
               ..baseRevision = baseRevision
               ..headRevision = headRevision
@@ -260,6 +310,7 @@ class NoteRepository {
           ..contentMd = content
           ..updatedAt = updatedAt
           ..deletedAt = deletedAt
+          ..archivedAt = archivedAt
           ..lastEditorDeviceId = lastEditorDeviceId
           ..baseRevision = baseRevision
           ..headRevision = headRevision
@@ -276,13 +327,15 @@ class NoteRepository {
 
       // 若来自同一编辑设备，说明是远端后续版本到达但本地 revision 游标偏移，
       // 直接按远端覆盖恢复一致性，避免重复嵌套冲突标记。
-      final shouldRecoverFromRemote = local.lastEditorDeviceId == lastEditorDeviceId;
+      final shouldRecoverFromRemote =
+          local.lastEditorDeviceId == lastEditorDeviceId;
       if (shouldRecoverFromRemote) {
         local
           ..title = title
           ..contentMd = content
           ..updatedAt = updatedAt
           ..deletedAt = deletedAt
+          ..archivedAt = archivedAt
           ..lastEditorDeviceId = lastEditorDeviceId
           ..baseRevision = baseRevision
           ..headRevision = headRevision
@@ -305,6 +358,7 @@ class NoteRepository {
         )
         ..updatedAt = DateTime.now().toUtc()
         ..deletedAt = null
+        ..archivedAt = archivedAt
         ..lastEditorDeviceId = lastEditorDeviceId
         ..baseRevision = baseRevision
         ..headRevision = headRevision
@@ -342,6 +396,7 @@ class NoteRepository {
               ..contentMd = ''
               ..updatedAt = deletedAt
               ..deletedAt = deletedAt
+              ..archivedAt = null
               ..lastEditorDeviceId = editorDeviceId
               ..baseRevision = baseRevision
               ..headRevision = headRevision
@@ -353,6 +408,7 @@ class NoteRepository {
 
       local
         ..deletedAt = deletedAt
+        ..archivedAt = null
         ..updatedAt = deletedAt
         ..lastEditorDeviceId = editorDeviceId
         ..baseRevision = baseRevision
@@ -369,6 +425,7 @@ class NoteRepository {
       'contentMd': note.contentMd,
       'updatedAt': note.updatedAt.toUtc().toIso8601String(),
       'deletedAt': note.deletedAt?.toUtc().toIso8601String(),
+      'archivedAt': note.archivedAt?.toUtc().toIso8601String(),
       'lastEditorDeviceId': note.lastEditorDeviceId,
       'baseRevision': note.baseRevision,
       'headRevision': note.headRevision,
