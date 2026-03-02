@@ -29,6 +29,8 @@ class NotesPage extends ConsumerStatefulWidget {
 }
 
 class _NotesPageState extends ConsumerState<NotesPage> {
+  static const Duration _deleteUndoSnackDuration = Duration(seconds: 4);
+  static const Duration _restoreHintDuration = Duration(seconds: 2);
   final Set<String> _selectedNoteIds = <String>{};
 
   bool get _isSelectionMode => _selectedNoteIds.isNotEmpty;
@@ -114,16 +116,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(l10n.selectedDeleted(selectedIds.length)),
-        action: SnackBarAction(
-          label: l10n.undo,
-          onPressed: () {
-            _undoDeleteBatch(selectedIds, services, l10n);
-          },
-        ),
-      ),
+    _showDeleteUndoSnackBar(
+      deletedMessage: l10n.selectedDeleted(selectedIds.length),
+      restoredMessage: l10n.selectedRestored(selectedIds.length),
+      undoLabel: l10n.undo,
+      onUndo: () async {
+        await _undoDeleteBatch(selectedIds, services, l10n);
+      },
     );
   }
 
@@ -172,20 +171,54 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
+    _showDeleteUndoSnackBar(
+      deletedMessage: l10n.selectedDeleted(1),
+      restoredMessage: l10n.selectedRestored(1),
+      undoLabel: l10n.undo,
+      onUndo: () async {
+        await services.syncEngine.restoreDeletedLocalNote(noteId);
+      },
+    );
+  }
+
+  void _showDeleteUndoSnackBar({
+    required String deletedMessage,
+    required String restoredMessage,
+    required String undoLabel,
+    required Future<void> Function() onUndo,
+  }) {
+    if (!mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    final undoColor = Theme.of(context).colorScheme.primary;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
-        content: Text(l10n.selectedDeleted(1)),
-        action: SnackBarAction(
-          label: l10n.undo,
-          onPressed: () async {
-            await services.syncEngine.restoreDeletedLocalNote(noteId);
-            if (!mounted) {
-              return;
-            }
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(l10n.selectedRestored(1))),
-            );
-          },
+        duration: _deleteUndoSnackDuration,
+        content: Row(
+          children: [
+            Expanded(child: Text(deletedMessage)),
+            TextButton(
+              onPressed: () async {
+                messenger.hideCurrentSnackBar();
+                await onUndo();
+                messenger.showSnackBar(
+                  SnackBar(
+                    duration: _restoreHintDuration,
+                    content: Text(restoredMessage),
+                  ),
+                );
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: undoColor,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(40, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(undoLabel),
+            ),
+          ],
         ),
       ),
     );
