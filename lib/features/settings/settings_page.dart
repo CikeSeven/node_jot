@@ -228,6 +228,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 },
               ),
             ),
+            // 配对码策略分组。
+            IosGroupSection(
+              title: l10n.pairingCodeInputLabel,
+              child: ValueListenableBuilder<bool>(
+                valueListenable:
+                    services.appSettingsService.fixedPairingCodeEnabledNotifier,
+                builder: (context, enabled, _) {
+                  return SwitchListTile.adaptive(
+                    value: enabled,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l10n.fixedPairingCode),
+                    subtitle: Text(l10n.fixedPairingCodeHint),
+                    onChanged: (value) async {
+                      await services.appSettingsService.setFixedPairingCodeEnabled(
+                        value,
+                        currentPairingCode:
+                            services.syncEngine.pairingCode.value,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               l10n.localFirstDescription,

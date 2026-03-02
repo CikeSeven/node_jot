@@ -99,6 +99,11 @@ class AppLocalizations {
   String get themeSystem => _isZh ? '跟随系统' : 'System';
   String get themeLight => _isZh ? '亮色' : 'Light';
   String get themeDark => _isZh ? '暗色' : 'Dark';
+  String get fixedPairingCode => _isZh ? '固定配对码' : 'Fixed Pairing Code';
+  String get fixedPairingCodeHint =>
+      _isZh
+          ? '开启后重启应用时保持当前配对码不变'
+          : 'Keep current pairing code unchanged across app launches';
   String get pairedDeviceSettings => _isZh ? '设备配置' : 'Device Settings';
   String get deviceRemark => _isZh ? '备注' : 'Remark';
   String get deviceRemarkHint => _isZh ? '输入设备备注' : 'Enter device remark';

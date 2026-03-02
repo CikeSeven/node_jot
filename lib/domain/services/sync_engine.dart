@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../core/utils/app_log.dart';
 import '../../core/utils/id.dart';
 import '../../core/utils/pairing_code.dart';
@@ -33,6 +34,7 @@ class SyncEngine {
     required DeviceRepository deviceRepository,
     required OpLogRepository opLogRepository,
     required SyncCursorRepository syncCursorRepository,
+    required AppSettingsService appSettingsService,
     required CryptoService cryptoService,
     required DiscoveryService discoveryService,
     required SyncServer syncServer,
@@ -42,17 +44,25 @@ class SyncEngine {
        _deviceRepository = deviceRepository,
        _opLogRepository = opLogRepository,
        _syncCursorRepository = syncCursorRepository,
+       _appSettingsService = appSettingsService,
        _cryptoService = cryptoService,
        _discoveryService = discoveryService,
        _syncServer = syncServer,
        _syncClient = syncClient,
-       pairingCode = ValueNotifier<String>(PairingCode.generate());
+       pairingCode = ValueNotifier<String>(
+         _resolveInitialPairingCode(
+           fixedPairingCodeEnabled:
+               appSettingsService.fixedPairingCodeEnabledNotifier.value,
+           fixedPairingCode: appSettingsService.fixedPairingCode,
+         ),
+       );
 
   final LocalDeviceService _localDeviceService;
   final NoteRepository _noteRepository;
   final DeviceRepository _deviceRepository;
   final OpLogRepository _opLogRepository;
   final SyncCursorRepository _syncCursorRepository;
+  final AppSettingsService _appSettingsService;
   final CryptoService _cryptoService;
   final DiscoveryService _discoveryService;
   final SyncServer _syncServer;
@@ -66,6 +76,7 @@ class SyncEngine {
 
   /// 启动发现服务、同步服务端并订阅发现结果。
   Future<void> start() async {
+    await _syncPairingCodeWithSettingsOnStart();
     await _discoveryService.start();
     await _syncServer.start(
       port: AppConstants.syncPort,
@@ -116,6 +127,9 @@ class SyncEngine {
   /// 刷新配对码。
   Future<void> refreshPairingCode() async {
     pairingCode.value = PairingCode.generate();
+    if (_appSettingsService.fixedPairingCodeEnabledNotifier.value) {
+      await _appSettingsService.updateFixedPairingCode(pairingCode.value);
+    }
   }
 
   /// 手动刷新局域网发现。
@@ -123,6 +137,39 @@ class SyncEngine {
     AppLog.i('sync-engine', 'manual discovery refresh');
     _lastRegisterAttempts.clear();
     await _discoveryService.refreshNow();
+  }
+
+  static String _resolveInitialPairingCode({
+    required bool fixedPairingCodeEnabled,
+    required String? fixedPairingCode,
+  }) {
+    if (fixedPairingCodeEnabled && _isValidPairingCode(fixedPairingCode)) {
+      return fixedPairingCode!;
+    }
+    return PairingCode.generate();
+  }
+
+  static bool _isValidPairingCode(String? value) {
+    return value != null && RegExp(r'^\d{4}$').hasMatch(value);
+  }
+
+  /// 启动时对齐配对码持久化状态。
+  ///
+  /// 若开启了固定配对码但本地还没有有效值，则将当前配对码写入持久化。
+  Future<void> _syncPairingCodeWithSettingsOnStart() async {
+    if (!_appSettingsService.fixedPairingCodeEnabledNotifier.value) {
+      return;
+    }
+
+    final fixedCode = _appSettingsService.fixedPairingCode;
+    if (_isValidPairingCode(fixedCode)) {
+      if (pairingCode.value != fixedCode) {
+        pairingCode.value = fixedCode!;
+      }
+      return;
+    }
+
+    await _appSettingsService.updateFixedPairingCode(pairingCode.value);
   }
 
   /// 更新本机显示名。

@@ -89,6 +89,7 @@ class AppServices {
       deviceRepository: deviceRepository,
       opLogRepository: opLogRepository,
       syncCursorRepository: syncCursorRepository,
+      appSettingsService: appSettingsService,
       cryptoService: cryptoService,
       discoveryService: discoveryService,
       syncServer: syncServer,
