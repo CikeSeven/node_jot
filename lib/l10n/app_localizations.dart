@@ -43,6 +43,11 @@ class AppLocalizations {
   String get saving => _isZh ? '保存中...' : 'Saving...';
   String get save => _isZh ? '保存' : 'Save';
   String get saved => _isZh ? '已保存' : 'Saved';
+  String charCountLabel(int count) => _isZh ? '字数 $count' : 'Chars $count';
+  String get delete => _isZh ? '删除' : 'Delete';
+  String get deleteNoteTitle => _isZh ? '删除笔记' : 'Delete Note';
+  String get deleteNoteConfirmMessage =>
+      _isZh ? '确定删除这条笔记吗？此操作无法撤销。' : 'Delete this note? This action cannot be undone.';
   String get conflictCopyCreated =>
       _isZh
           ? '检测到冲突，已创建冲突副本。'
