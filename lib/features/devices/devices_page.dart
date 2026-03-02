@@ -314,16 +314,12 @@ class _DiscoveredDeviceTile extends ConsumerWidget {
           color: AppColors.navActiveText,
         ),
         trailing: Wrap(
-          // 两个核心动作：配对 + 同步。
+          // 未配对设备只提供配对入口。
           spacing: 4,
           children: [
             TextButton(
               onPressed: () => _showPairDialog(context, services, device),
               child: Text(l10n.pair),
-            ),
-            FilledButton.tonal(
-              onPressed: () => _sync(context, services, device),
-              child: Text(l10n.sync),
             ),
           ],
         ),
@@ -385,28 +381,6 @@ class _DiscoveredDeviceTile extends ConsumerWidget {
     );
   }
 
-  /// 触发与目标设备的一次同步。
-  Future<void> _sync(
-    BuildContext context,
-    AppServices services,
-    DiscoveredDevice device,
-  ) async {
-    final l10n = context.l10n;
-    try {
-      await services.syncEngine.syncWithDevice(device);
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n.syncDone)));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.syncFailedWithReason(e.toString()))),
-        );
-      }
-    }
-  }
 }
 
 class _FourDigitPairDialog extends StatefulWidget {
