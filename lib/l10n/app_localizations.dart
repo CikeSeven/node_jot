@@ -99,6 +99,15 @@ class AppLocalizations {
   String get themeSystem => _isZh ? '跟随系统' : 'System';
   String get themeLight => _isZh ? '亮色' : 'Light';
   String get themeDark => _isZh ? '暗色' : 'Dark';
+  String get pairedDeviceSettings => _isZh ? '设备配置' : 'Device Settings';
+  String get deviceRemark => _isZh ? '备注' : 'Remark';
+  String get deviceRemarkHint => _isZh ? '输入设备备注' : 'Enter device remark';
+  String get deviceInfo => _isZh ? '设备信息' : 'Device Info';
+  String get deleteDevice => _isZh ? '删除此设备' : 'Delete Device';
+  String get deleting => _isZh ? '删除中...' : 'Deleting...';
+  String get deleteDeviceConfirm =>
+      _isZh ? '确定删除该设备吗？删除后需要重新配对。' : 'Delete this device? Pairing will be required again.';
+  String get deviceDeleted => _isZh ? '设备已删除' : 'Device deleted';
   String get deviceName => _isZh ? '设备名称' : 'Device Name';
   String get saveDeviceName => _isZh ? '保存设备名称' : 'Save Device Name';
   String get localProfile => _isZh ? '本机信息' : 'Local Profile';

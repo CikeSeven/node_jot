@@ -14,6 +14,9 @@ import '../../domain/models/discovered_device.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_card_tile.dart';
 import '../../ui/widgets/ios_group_section.dart';
+import 'paired_device_settings_page.dart';
+
+final pairedDevicesExpandedProvider = StateProvider<bool>((ref) => true);
 
 /// 设备页。
 ///
@@ -26,6 +29,7 @@ class DevicesPage extends ConsumerWidget {
     final l10n = context.l10n;
     final services = ref.watch(appServicesProvider);
     final local = services.localDeviceService.profile;
+    final pairedExpanded = ref.watch(pairedDevicesExpandedProvider);
 
     return Container(
       // 页面背景层。
@@ -89,25 +93,46 @@ class DevicesPage extends ConsumerWidget {
             // 已配对设备分组：可以直接手动同步。
             IosGroupSection(
               title: l10n.pairedDevices,
-              child: StreamBuilder<List<DeviceEntity>>(
-                stream: services.syncEngine.trustedDevices,
-                builder: (context, snapshot) {
-                  final paired = snapshot.data ?? const <DeviceEntity>[];
-                  if (paired.isEmpty) {
-                    // 空态：提示尚未有信任设备。
-                    return Text(
-                      l10n.noPairedDevicesYet,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    );
-                  }
-                  return Column(
-                    // 每个条目对应一个已配对设备操作卡。
-                    children:
-                        paired
-                            .map((device) => _PairedDeviceTile(device: device))
-                            .toList(),
-                  );
+              trailing: IconButton(
+                onPressed: () {
+                  ref.read(pairedDevicesExpandedProvider.notifier).state =
+                      !pairedExpanded;
                 },
+                icon: AnimatedRotation(
+                  turns: pairedExpanded ? 0 : 0.5,
+                  duration: const Duration(milliseconds: 180),
+                  child: const Icon(CupertinoIcons.chevron_up, size: 18),
+                ),
+              ),
+              child: AnimatedCrossFade(
+                duration: const Duration(milliseconds: 220),
+                firstCurve: Curves.easeOutCubic,
+                secondCurve: Curves.easeInCubic,
+                crossFadeState:
+                    pairedExpanded
+                        ? CrossFadeState.showFirst
+                        : CrossFadeState.showSecond,
+                firstChild: StreamBuilder<List<DeviceEntity>>(
+                  stream: services.syncEngine.trustedDevices,
+                  builder: (context, snapshot) {
+                    final paired = snapshot.data ?? const <DeviceEntity>[];
+                    if (paired.isEmpty) {
+                      // 空态：提示尚未有信任设备。
+                      return Text(
+                        l10n.noPairedDevicesYet,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      );
+                    }
+                    return Column(
+                      // 每个条目对应一个已配对设备操作卡。
+                      children:
+                          paired
+                              .map((device) => _PairedDeviceTile(device: device))
+                              .toList(),
+                    );
+                  },
+                ),
+                secondChild: const SizedBox.shrink(),
               ),
             ),
             // 已发现设备分组：支持普通配对和直连配对。
@@ -581,6 +606,13 @@ class _PairedDeviceTile extends ConsumerWidget {
           CupertinoIcons.checkmark_shield,
           color: AppColors.navActiveText,
         ),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => PairedDeviceSettingsPage(device: device),
+            ),
+          );
+        },
         trailing: FilledButton.tonal(
           // 一键与信任设备执行增量同步。
           onPressed: () async {

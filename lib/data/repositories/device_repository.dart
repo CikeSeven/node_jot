@@ -51,7 +51,7 @@ class DeviceRepository {
       }
 
       existing
-        ..displayName = displayName
+        ..displayName = existing.trusted ? existing.displayName : displayName
         ..host = host
         ..port = port
         ..publicKey = publicKey
@@ -89,7 +89,7 @@ class DeviceRepository {
       }
 
       existing
-        ..displayName = displayName
+        ..displayName = existing.trusted ? existing.displayName : displayName
         ..host = host
         ..port = port
         ..publicKey = publicKey
@@ -98,6 +98,38 @@ class DeviceRepository {
         ..pairedAt = existing.pairedAt ?? DateTime.now().toUtc()
         ..lastSeenAt = DateTime.now().toUtc();
       await _db.deviceEntitys.put(existing);
+    });
+  }
+
+  /// 更新已配对设备备注（复用 displayName 展示字段）。
+  Future<void> updateTrustedDeviceRemark({
+    required String deviceId,
+    required String remark,
+  }) async {
+    await _db.writeTxn(() async {
+      final existing =
+          await _db.deviceEntitys.where().deviceIdEqualTo(deviceId).findFirst();
+      if (existing == null || !existing.trusted) {
+        return;
+      }
+      final trimmed = remark.trim();
+      if (trimmed.isEmpty) {
+        return;
+      }
+      existing.displayName = trimmed;
+      await _db.deviceEntitys.put(existing);
+    });
+  }
+
+  /// 删除指定设备（解除信任关系）。
+  Future<void> deleteDevice(String deviceId) async {
+    await _db.writeTxn(() async {
+      final existing =
+          await _db.deviceEntitys.where().deviceIdEqualTo(deviceId).findFirst();
+      if (existing == null) {
+        return;
+      }
+      await _db.deviceEntitys.delete(existing.isarId);
     });
   }
 }
