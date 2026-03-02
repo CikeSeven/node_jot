@@ -1,6 +1,17 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 单设备自动同步配置。
+class DeviceAutoSyncSetting {
+  const DeviceAutoSyncSetting({
+    required this.enabled,
+    required this.updatedAt,
+  });
+
+  final bool enabled;
+  final DateTime updatedAt;
+}
+
 /// 应用运行设置服务。
 ///
 /// 持久化保存用户对连接策略和同步策略的偏好。
@@ -25,6 +36,8 @@ class AppSettingsService {
       'app.settings.fixed_pairing_code_enabled';
   static const _keyFixedPairingCode = 'app.settings.fixed_pairing_code';
   static const _keyDeviceAutoSyncPrefix = 'app.settings.device_auto_sync.';
+  static const _keyDeviceAutoSyncUpdatedAtPrefix =
+      'app.settings.device_auto_sync.updated_at.';
 
   final SharedPreferences _prefs;
   final ValueNotifier<bool> oneTimeConnectionNotifier;
@@ -66,8 +79,23 @@ class AppSettingsService {
   ///
   /// 若该设备尚未单独配置，则回退到全局默认自动同步设置。
   bool getDeviceAutoSyncEnabled(String deviceId) {
-    final key = _deviceAutoSyncKey(deviceId);
-    return _prefs.getBool(key) ?? autoSyncNotifier.value;
+    return getDeviceAutoSyncSetting(deviceId).enabled;
+  }
+
+  /// 读取指定设备的自动同步配置（含最后修改时间）。
+  ///
+  /// 旧版本未记录更新时间的设备配置将回退到 Unix epoch（UTC）。
+  DeviceAutoSyncSetting getDeviceAutoSyncSetting(String deviceId) {
+    final enabled = _prefs.getBool(_deviceAutoSyncKey(deviceId));
+    final updatedAtMs = _prefs.getInt(_deviceAutoSyncUpdatedAtKey(deviceId));
+    final updatedAt =
+        updatedAtMs == null
+            ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
+            : DateTime.fromMillisecondsSinceEpoch(updatedAtMs, isUtc: true);
+    return DeviceAutoSyncSetting(
+      enabled: enabled ?? autoSyncNotifier.value,
+      updatedAt: updatedAt,
+    );
   }
 
   /// 获取指定设备自动同步开关的监听器。
@@ -90,26 +118,53 @@ class AppSettingsService {
     bool? defaultEnabled,
   }) async {
     final key = _deviceAutoSyncKey(deviceId);
+    final updatedKey = _deviceAutoSyncUpdatedAtKey(deviceId);
     if (_prefs.containsKey(key)) {
       final persisted = _prefs.getBool(key) ?? autoSyncNotifier.value;
       _upsertDeviceAutoSyncNotifier(deviceId, persisted);
+      if (!_prefs.containsKey(updatedKey)) {
+        await _prefs.setInt(
+          updatedKey,
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
+              .millisecondsSinceEpoch,
+        );
+      }
       return;
     }
 
     final value = defaultEnabled ?? autoSyncNotifier.value;
+    final now = DateTime.now().toUtc();
     await _prefs.setBool(key, value);
+    await _prefs.setInt(updatedKey, now.millisecondsSinceEpoch);
     _upsertDeviceAutoSyncNotifier(deviceId, value);
   }
 
   /// 更新指定设备自动同步开关。
-  Future<void> setDeviceAutoSyncEnabled(String deviceId, bool enabled) async {
+  ///
+  /// 若传入更新时间早于本地记录，则忽略该更新（latest-wins）。
+  Future<void> setDeviceAutoSyncEnabled(
+    String deviceId,
+    bool enabled, {
+    DateTime? updatedAt,
+  }) async {
+    final incomingAt = (updatedAt ?? DateTime.now().toUtc()).toUtc();
+    final current = getDeviceAutoSyncSetting(deviceId);
+    if (current.updatedAt.isAfter(incomingAt)) {
+      return;
+    }
+
     await _prefs.setBool(_deviceAutoSyncKey(deviceId), enabled);
+    await _prefs.setInt(
+      _deviceAutoSyncUpdatedAtKey(deviceId),
+      incomingAt.millisecondsSinceEpoch,
+    );
     _upsertDeviceAutoSyncNotifier(deviceId, enabled);
   }
 
   /// 删除指定设备自动同步配置（设备解除配对时调用）。
   Future<void> removeDeviceAutoSyncEnabled(String deviceId) async {
     await _prefs.remove(_deviceAutoSyncKey(deviceId));
+    await _prefs.remove(_deviceAutoSyncUpdatedAtKey(deviceId));
     _deviceAutoSyncNotifiers.remove(deviceId)?.dispose();
   }
 
@@ -153,6 +208,10 @@ class AppSettingsService {
 
   String _deviceAutoSyncKey(String deviceId) {
     return '$_keyDeviceAutoSyncPrefix$deviceId';
+  }
+
+  String _deviceAutoSyncUpdatedAtKey(String deviceId) {
+    return '$_keyDeviceAutoSyncUpdatedAtPrefix$deviceId';
   }
 
   void _upsertDeviceAutoSyncNotifier(String deviceId, bool value) {

@@ -552,14 +552,10 @@ class SyncEngine {
     }
 
     try {
-      final mergedAutoSync = await _syncTrustedSettingsWithPeer(
+      await _syncTrustedSettingsWithPeer(
         trusted: trusted,
         host: device.host,
         port: device.port,
-      );
-      await _appSettingsService.setDeviceAutoSyncEnabled(
-        trusted.deviceId,
-        mergedAutoSync,
       );
       _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.connected);
     } catch (e) {
@@ -573,13 +569,13 @@ class SyncEngine {
     }
   }
 
-  Future<bool> _syncTrustedSettingsWithPeer({
+  Future<void> _syncTrustedSettingsWithPeer({
     required DeviceEntity trusted,
     required String host,
     required int port,
   }) async {
     final localProfile = _localDeviceService.profile;
-    final localAutoSync = _appSettingsService.getDeviceAutoSyncEnabled(
+    final localSetting = _appSettingsService.getDeviceAutoSyncSetting(
       trusted.deviceId,
     );
 
@@ -589,7 +585,8 @@ class SyncEngine {
       payload: {
         'type': 'peer_status_request',
         'requesterDeviceId': localProfile.deviceId,
-        'autoSyncEnabled': localAutoSync,
+        'autoSyncEnabled': localSetting.enabled,
+        'autoSyncUpdatedAtMs': localSetting.updatedAt.millisecondsSinceEpoch,
       },
     );
 
@@ -606,36 +603,50 @@ class SyncEngine {
     }
 
     final remoteAutoSync = response['autoSyncEnabled'] == true;
-    final mergedAutoSync = localAutoSync && remoteAutoSync;
+    final remoteUpdatedAtMs = _asInt(response['autoSyncUpdatedAtMs']) ?? 0;
+    final remoteUpdatedAt = DateTime.fromMillisecondsSinceEpoch(
+      remoteUpdatedAtMs,
+      isUtc: true,
+    );
 
-    if (remoteAutoSync != mergedAutoSync) {
-      final applyEnvelope = await _cryptoService.encryptEnvelope(
-        senderDeviceId: localProfile.deviceId,
-        keyBase64: trusted.sharedKey!,
-        payload: {
-          'type': 'peer_settings_apply',
-          'requesterDeviceId': localProfile.deviceId,
-          'autoSyncEnabled': mergedAutoSync,
-        },
-      );
-
-      final applyResponseEnvelope = await _syncClient.send(
-        host: host,
-        port: port,
-        message: applyEnvelope,
-      );
-      final applyResponse = await _decryptIfSecure(
-        applyResponseEnvelope,
-        trusted.sharedKey!,
-      );
-      if (applyResponse['type'] != 'peer_settings_apply_ok') {
-        throw Exception(
-          (applyResponse['message'] as String?) ?? 'Peer settings apply failed',
+    if (!remoteUpdatedAt.isAfter(localSetting.updatedAt)) {
+      if (remoteAutoSync != localSetting.enabled ||
+          remoteUpdatedAtMs != localSetting.updatedAt.millisecondsSinceEpoch) {
+        final applyEnvelope = await _cryptoService.encryptEnvelope(
+          senderDeviceId: localProfile.deviceId,
+          keyBase64: trusted.sharedKey!,
+          payload: {
+            'type': 'peer_settings_apply',
+            'requesterDeviceId': localProfile.deviceId,
+            'autoSyncEnabled': localSetting.enabled,
+            'autoSyncUpdatedAtMs':
+                localSetting.updatedAt.millisecondsSinceEpoch,
+          },
         );
+
+        final applyResponseEnvelope = await _syncClient.send(
+          host: host,
+          port: port,
+          message: applyEnvelope,
+        );
+        final applyResponse = await _decryptIfSecure(
+          applyResponseEnvelope,
+          trusted.sharedKey!,
+        );
+        if (applyResponse['type'] != 'peer_settings_apply_ok') {
+          throw Exception(
+            (applyResponse['message'] as String?) ?? 'Peer settings apply failed',
+          );
+        }
       }
+      return;
     }
 
-    return mergedAutoSync;
+    await _appSettingsService.setDeviceAutoSyncEnabled(
+      trusted.deviceId,
+      remoteAutoSync,
+      updatedAt: remoteUpdatedAt,
+    );
   }
 
   void _setTrustedConnectionState(
@@ -921,9 +932,13 @@ class SyncEngine {
     final autoSyncEnabled = _appSettingsService.getDeviceAutoSyncEnabled(
       requesterDeviceId,
     );
+    final setting = _appSettingsService.getDeviceAutoSyncSetting(
+      requesterDeviceId,
+    );
     return {
       'type': 'peer_status_response',
       'autoSyncEnabled': autoSyncEnabled,
+      'autoSyncUpdatedAtMs': setting.updatedAt.millisecondsSinceEpoch,
     };
   }
 
@@ -943,6 +958,11 @@ class SyncEngine {
     }
 
     final enabled = message['autoSyncEnabled'] == true;
+    final updatedAtMs = _asInt(message['autoSyncUpdatedAtMs']) ?? 0;
+    final updatedAt = DateTime.fromMillisecondsSinceEpoch(
+      updatedAtMs,
+      isUtc: true,
+    );
     await _deviceRepository.upsertSeenDevice(
       deviceId: requesterDeviceId,
       displayName: requester.displayName,
@@ -950,10 +970,15 @@ class SyncEngine {
       port: requester.port,
       publicKey: requester.publicKey,
     );
-    await _appSettingsService.setDeviceAutoSyncEnabled(requesterDeviceId, enabled);
+    await _appSettingsService.setDeviceAutoSyncEnabled(
+      requesterDeviceId,
+      enabled,
+      updatedAt: updatedAt,
+    );
     return {
       'type': 'peer_settings_apply_ok',
       'autoSyncEnabled': enabled,
+      'autoSyncUpdatedAtMs': updatedAt.millisecondsSinceEpoch,
     };
   }
 
