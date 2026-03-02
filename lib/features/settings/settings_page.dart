@@ -23,6 +23,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late final TextEditingController _nameController;
   bool _saving = false;
 
+  IconData _currentPlatformIcon(BuildContext context) {
+    switch (Theme.of(context).platform) {
+      case TargetPlatform.windows:
+      case TargetPlatform.macOS:
+      case TargetPlatform.linux:
+        return CupertinoIcons.desktopcomputer;
+      case TargetPlatform.iOS:
+      case TargetPlatform.android:
+      case TargetPlatform.fuchsia:
+        return CupertinoIcons.device_phone_portrait;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +54,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final l10n = context.l10n;
     final services = ref.watch(appServicesProvider);
     final profile = services.localDeviceService.profile;
+    final platformIcon = _currentPlatformIcon(context);
 
     return Container(
       // 页面背景层。
@@ -74,9 +88,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   TextField(
                     controller: _nameController,
                     decoration: InputDecoration(
-                      prefixIcon: const Icon(
-                        CupertinoIcons.device_phone_portrait,
-                      ),
+                      prefixIcon: Icon(platformIcon),
                       hintText: l10n.deviceName,
                     ),
                   ),
@@ -137,14 +149,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     leading: const Icon(
                       CupertinoIcons.lock_shield,
                       color: AppColors.navActiveText,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  // 本地优先策略说明。
-                  Text(
-                    l10n.localFirstDescription,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],

@@ -39,7 +39,7 @@ class AppLocalizations {
   String get editNote => _isZh ? '编辑笔记' : 'Edit Note';
   String get titleHint => _isZh ? '标题' : 'Title';
   String get markdownHint =>
-      _isZh ? '使用 Markdown 编写...' : 'Write in Markdown...';
+      _isZh ? '输入笔记...' : 'Type your note...';
   String get saving => _isZh ? '保存中...' : 'Saving...';
   String get save => _isZh ? '保存' : 'Save';
   String get saved => _isZh ? '已保存' : 'Saved';
@@ -93,10 +93,6 @@ class AppLocalizations {
   String deviceIdLabel(String id) => _isZh ? '设备 ID: $id' : 'Device ID: $id';
   String publicKeyLabel(String value) =>
       _isZh ? '公钥: $value' : 'Public Key: $value';
-  String get localFirstDescription =>
-      _isZh
-          ? 'NodeJot 采用本地优先：无云上传、无账号、无服务端依赖。'
-          : 'NodeJot is local-first: no cloud upload, no account, no server dependency.';
   String get saveDeviceNameDone => _isZh ? '保存成功' : 'Saved';
 }
 

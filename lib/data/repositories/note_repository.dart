@@ -36,6 +36,7 @@ class NoteRepository {
   NoteRepository(this._db);
 
   final Isar _db;
+  static final RegExp _autoTitlePattern = RegExp(r'^标题(\d+)$');
 
   /// 监听未删除笔记（按更新时间倒序）。
   Stream<List<NoteEntity>> watchActiveNotes() {
@@ -61,6 +62,29 @@ class NoteRepository {
   /// 按业务 ID 查询笔记。
   Future<NoteEntity?> getByNoteId(String noteId) {
     return _db.noteEntitys.where().noteIdEqualTo(noteId).findFirst();
+  }
+
+  /// 获取新建笔记默认标题的下一个序号。
+  ///
+  /// 规则：扫描未删除笔记中形如“标题N”的标题，返回最大 N + 1。
+  /// 若不存在匹配项，则返回 1。
+  Future<int> getNextAutoTitleIndex() async {
+    final notes =
+        await _db.noteEntitys.where().filter().deletedAtIsNull().findAll();
+    var maxIndex = 0;
+
+    for (final note in notes) {
+      final match = _autoTitlePattern.firstMatch(note.title.trim());
+      if (match == null) {
+        continue;
+      }
+      final value = int.tryParse(match.group(1) ?? '');
+      if (value != null && value > maxIndex) {
+        maxIndex = value;
+      }
+    }
+
+    return maxIndex + 1;
   }
 
   /// 保存本地编辑。
