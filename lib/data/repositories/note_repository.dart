@@ -245,8 +245,7 @@ class NoteRepository {
         ..deletedAt = now
         ..lastEditorDeviceId = editorDeviceId
         ..baseRevision = existing.headRevision
-        ..headRevision = existing.headRevision + 1
-        ..updatedAt = now;
+        ..headRevision = existing.headRevision + 1;
       await _db.noteEntitys.put(existing);
     });
   }
@@ -264,10 +263,8 @@ class NoteRepository {
         return;
       }
 
-      final now = DateTime.now().toUtc();
       existing
         ..deletedAt = null
-        ..updatedAt = now
         ..lastEditorDeviceId = editorDeviceId
         ..baseRevision = existing.headRevision
         ..headRevision = existing.headRevision + 1;
@@ -435,7 +432,6 @@ class NoteRepository {
       local
         ..deletedAt = deletedAt
         ..archivedAt = null
-        ..updatedAt = deletedAt
         ..lastEditorDeviceId = editorDeviceId
         ..baseRevision = baseRevision
         ..headRevision = headRevision;
