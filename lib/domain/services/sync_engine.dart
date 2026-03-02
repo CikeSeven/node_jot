@@ -331,6 +331,32 @@ class SyncEngine {
     );
   }
 
+  /// 恢复本地软删除笔记并写入 update 操作日志。
+  Future<void> restoreDeletedLocalNote(String noteId) async {
+    final profile = _localDeviceService.profile;
+    final restored = await _noteRepository.restoreSoftDeletedLocalNote(
+      noteId: noteId,
+      editorDeviceId: profile.deviceId,
+    );
+    if (restored == null) {
+      return;
+    }
+
+    final lamport = await _nextLamport();
+    await _opLogRepository.appendOperation(
+      SyncOperation(
+        opId: newUuid(),
+        lamport: lamport,
+        deviceId: profile.deviceId,
+        noteId: restored.noteId,
+        opType: 'update',
+        payload: _noteRepository.toSnapshot(restored),
+        createdAt: DateTime.now().toUtc(),
+      ),
+    );
+    _scheduleAutoSync();
+  }
+
   /// 归档本地笔记并写入 update 操作日志。
   Future<void> archiveLocalNote(String noteId) async {
     await _setArchiveState(noteId: noteId, archived: true);

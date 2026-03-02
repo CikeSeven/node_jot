@@ -50,6 +50,17 @@ class AppLocalizations {
   String get saved => _isZh ? '已保存' : 'Saved';
   String charCountLabel(int count) => _isZh ? '字数 $count' : 'Chars $count';
   String get delete => _isZh ? '删除' : 'Delete';
+  String get undo => _isZh ? '撤销' : 'Undo';
+  String selectedCountLabel(int count) =>
+      _isZh ? '已选 $count 项' : '$count selected';
+  String deleteSelectedConfirmMessage(int count) =>
+      _isZh ? '确定删除选中的 $count 条笔记吗？' : 'Delete $count selected notes?';
+  String selectedArchived(int count) =>
+      _isZh ? '已归档 $count 条笔记' : 'Archived $count notes';
+  String selectedDeleted(int count) =>
+      _isZh ? '已删除 $count 条笔记' : 'Deleted $count notes';
+  String selectedRestored(int count) =>
+      _isZh ? '已恢复 $count 条笔记' : 'Restored $count notes';
   String get deleteNoteTitle => _isZh ? '删除笔记' : 'Delete Note';
   String get deleteNoteConfirmMessage =>
       _isZh

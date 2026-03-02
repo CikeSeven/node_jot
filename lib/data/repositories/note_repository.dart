@@ -251,6 +251,32 @@ class NoteRepository {
     });
   }
 
+  /// 本地恢复已软删除笔记。
+  Future<NoteEntity?> restoreSoftDeletedLocalNote({
+    required String noteId,
+    required String editorDeviceId,
+  }) async {
+    NoteEntity? restored;
+    await _db.writeTxn(() async {
+      final existing =
+          await _db.noteEntitys.where().noteIdEqualTo(noteId).findFirst();
+      if (existing == null || existing.deletedAt == null) {
+        return;
+      }
+
+      final now = DateTime.now().toUtc();
+      existing
+        ..deletedAt = null
+        ..updatedAt = now
+        ..lastEditorDeviceId = editorDeviceId
+        ..baseRevision = existing.headRevision
+        ..headRevision = existing.headRevision + 1;
+      await _db.noteEntitys.put(existing);
+      restored = existing;
+    });
+    return restored;
+  }
+
   /// 应用远端笔记快照。
   ///
   /// 若无法基于 `baseRevision` 快进，则写入 Git 风格内联冲突块。

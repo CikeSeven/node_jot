@@ -15,82 +15,237 @@ import 'note_editor_page.dart';
 
 /// 笔记首页。
 ///
-/// 展示活动笔记列表和新建按钮。
-class NotesPage extends ConsumerWidget {
+/// 支持：
+/// - 左滑单条归档；
+/// - 长按进入多选模式；
+/// - 顶部图标批量归档/删除；
+/// - 删除后可在提示中撤销。
+class NotesPage extends ConsumerStatefulWidget {
   const NotesPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotesPage> createState() => _NotesPageState();
+}
+
+class _NotesPageState extends ConsumerState<NotesPage> {
+  final Set<String> _selectedNoteIds = <String>{};
+
+  bool get _isSelectionMode => _selectedNoteIds.isNotEmpty;
+
+  void _clearSelection() {
+    if (_selectedNoteIds.isEmpty) {
+      return;
+    }
+    setState(_selectedNoteIds.clear);
+  }
+
+  void _toggleSelection(String noteId, {bool forceSelect = false}) {
+    setState(() {
+      if (forceSelect) {
+        _selectedNoteIds.add(noteId);
+        return;
+      }
+
+      if (_selectedNoteIds.contains(noteId)) {
+        _selectedNoteIds.remove(noteId);
+      } else {
+        _selectedNoteIds.add(noteId);
+      }
+    });
+  }
+
+  Future<void> _archiveSelected(
+    AppServices services,
+    AppLocalizations l10n,
+  ) async {
+    if (_selectedNoteIds.isEmpty) {
+      return;
+    }
+    final selectedIds = _selectedNoteIds.toList(growable: false);
+    _clearSelection();
+    for (final noteId in selectedIds) {
+      await services.syncEngine.archiveLocalNote(noteId);
+    }
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.selectedArchived(selectedIds.length))));
+  }
+
+  Future<void> _deleteSelected(
+    AppServices services,
+    AppLocalizations l10n,
+  ) async {
+    if (_selectedNoteIds.isEmpty) {
+      return;
+    }
+    final selectedIds = _selectedNoteIds.toList(growable: false);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            title: Text(l10n.delete),
+            content: Text(l10n.deleteSelectedConfirmMessage(selectedIds.length)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton.tonal(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(l10n.delete),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    _clearSelection();
+    for (final noteId in selectedIds) {
+      await services.syncEngine.deleteLocalNote(noteId);
+    }
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(l10n.selectedDeleted(selectedIds.length)),
+        action: SnackBarAction(
+          label: l10n.undo,
+          onPressed: () {
+            _undoDeleteBatch(selectedIds, services, l10n);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _undoDeleteBatch(
+    List<String> noteIds,
+    AppServices services,
+    AppLocalizations l10n,
+  ) async {
+    for (final noteId in noteIds) {
+      await services.syncEngine.restoreDeletedLocalNote(noteId);
+    }
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.selectedRestored(noteIds.length))));
+  }
+
+  void _openEditor([String? noteId]) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
     final services = ref.watch(appServicesProvider);
     final platform = Theme.of(context).platform;
     final useSideRail =
         platform == TargetPlatform.windows || platform == TargetPlatform.macOS;
-    // 预留 FAB 与悬浮底栏的安全间距，避免被遮挡。
     final fabBottomOffset =
         useSideRail ? 16.0 : 84 + MediaQuery.paddingOf(context).bottom;
-    // 预留列表底部安全间距，避免最后一项被悬浮底栏遮挡。
     final listBottomOffset =
         useSideRail ? 16.0 : 112 + MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
-      // 右下角新建按钮（上移以避开底栏）。
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: fabBottomOffset),
-        child: FloatingActionButton(
-          onPressed: () => _openEditor(context),
-          child: const Icon(CupertinoIcons.add),
-        ),
-      ),
+      floatingActionButton:
+          _isSelectionMode
+              ? null
+              : Padding(
+                padding: EdgeInsets.only(bottom: fabBottomOffset),
+                child: FloatingActionButton(
+                  onPressed: _openEditor,
+                  child: const Icon(CupertinoIcons.add),
+                ),
+              ),
       body: Container(
-        // 页面主背景：顶部到底部的浅色渐变。
         decoration: BoxDecoration(
           gradient: AppTheme.pageBackground(Theme.of(context).brightness),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              // 顶部标题。
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.l,
-                  AppSpacing.m,
-                  AppSpacing.l,
-                  0,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'NodeJot',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
+          child: StreamBuilder<List<NoteEntity>>(
+            stream: services.noteRepository.watchActiveNotes(),
+            builder: (context, snapshot) {
+              final notes = snapshot.data ?? const <NoteEntity>[];
+              final visibleIds = notes.map((e) => e.noteId).toSet();
+              if (_selectedNoteIds.any((id) => !visibleIds.contains(id))) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) {
+                    return;
+                  }
+                  setState(() {
+                    _selectedNoteIds.removeWhere((id) => !visibleIds.contains(id));
+                  });
+                });
+              }
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.l,
+                      AppSpacing.m,
+                      AppSpacing.l,
+                      0,
                     ),
-                    IconButton(
-                      tooltip: l10n.archivedNotes,
-                      onPressed:
-                          () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const ArchivedNotesPage(),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _isSelectionMode
+                                ? l10n.selectedCountLabel(_selectedNoteIds.length)
+                                : 'NodeJot',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        if (_isSelectionMode) ...[
+                          IconButton(
+                            tooltip: l10n.archive,
+                            onPressed: () => _archiveSelected(services, l10n),
+                            icon: const Icon(CupertinoIcons.archivebox),
+                          ),
+                          IconButton(
+                            tooltip: l10n.delete,
+                            onPressed: () => _deleteSelected(services, l10n),
+                            icon: Icon(
+                              CupertinoIcons.delete,
+                              color: Theme.of(context).colorScheme.error,
                             ),
                           ),
-                      icon: const Icon(CupertinoIcons.archivebox),
+                        ] else
+                          IconButton(
+                            tooltip: l10n.archivedNotes,
+                            onPressed:
+                                () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const ArchivedNotesPage(),
+                                  ),
+                                ),
+                            icon: const Icon(CupertinoIcons.archivebox),
+                          ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.m),
-              // 主内容区：标题行作为列表第一个条目，随列表一起滚动。
-              Expanded(
-                child: StreamBuilder<List<NoteEntity>>(
-                  stream: services.noteRepository.watchActiveNotes(),
-                  builder: (context, snapshot) {
-                    final notes = snapshot.data ?? const <NoteEntity>[];
-                    return ListView.separated(
+                  ),
+                  const SizedBox(height: AppSpacing.m),
+                  Expanded(
+                    child: ListView.separated(
                       key: const PageStorageKey<String>('notes_list'),
                       padding: EdgeInsets.only(bottom: listBottomOffset),
                       itemCount: notes.isEmpty ? 2 : notes.length + 1,
                       separatorBuilder: (context, index) {
-                        // 标题行与内容间距更小，列表项间距保持原样。
                         return SizedBox(height: index == 0 ? 8 : 10);
                       },
                       itemBuilder: (context, index) {
@@ -104,8 +259,7 @@ class NotesPage extends ConsumerWidget {
                                 Expanded(
                                   child: Text(
                                     l10n.tabNotes,
-                                    style:
-                                        Theme.of(context).textTheme.titleMedium,
+                                    style: Theme.of(context).textTheme.titleMedium,
                                   ),
                                 ),
                                 Text(
@@ -118,18 +272,42 @@ class NotesPage extends ConsumerWidget {
                         }
 
                         if (notes.isEmpty) {
-                          // 空态：提示并引导创建第一条笔记。
                           return Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: AppSpacing.l,
                             ),
-                            child: _EmptyState(
-                              onCreate: () => _openEditor(context),
-                            ),
+                            child: _EmptyState(onCreate: _openEditor),
                           );
                         }
 
                         final note = notes[index - 1];
+                        final selected = _selectedNoteIds.contains(note.noteId);
+                        final card = Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.l,
+                          ),
+                          child: _NoteCard(
+                            note: note,
+                            selected: selected,
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                _toggleSelection(note.noteId);
+                                return;
+                              }
+                              _openEditor(note.noteId);
+                            },
+                            onLongPress:
+                                () => _toggleSelection(
+                                  note.noteId,
+                                  forceSelect: true,
+                                ),
+                          ),
+                        );
+
+                        if (_isSelectionMode) {
+                          return card;
+                        }
+
                         return Dismissible(
                           key: ValueKey<String>('active-${note.noteId}'),
                           direction: DismissDirection.endToStart,
@@ -139,41 +317,24 @@ class NotesPage extends ConsumerWidget {
                             color: const Color(0xFF9C6BD8),
                           ),
                           onDismissed: (_) async {
-                            await services.syncEngine.archiveLocalNote(
-                              note.noteId,
-                            );
+                            await services.syncEngine.archiveLocalNote(note.noteId);
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text(l10n.noteArchived)),
                               );
                             }
                           },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.l,
-                            ),
-                            child: _NoteCard(
-                              note: note,
-                              onTap: () => _openEditor(context, note.noteId),
-                            ),
-                          ),
+                          child: card,
                         );
                       },
-                    );
-                  },
-                ),
-              ),
-            ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
-    );
-  }
-
-  /// 打开编辑页；未传 noteId 时创建新笔记。
-  void _openEditor(BuildContext context, [String? noteId]) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)),
     );
   }
 }
@@ -216,74 +377,105 @@ class _SwipeActionBackground extends StatelessWidget {
 
 /// 笔记列表卡片。
 class _NoteCard extends StatelessWidget {
-  const _NoteCard({required this.note, required this.onTap});
+  const _NoteCard({
+    required this.note,
+    required this.onTap,
+    required this.onLongPress,
+    required this.selected,
+  });
 
   final NoteEntity note;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final formatter = DateFormat('yyyy-MM-dd HH:mm');
+    final colorScheme = Theme.of(context).colorScheme;
     return IosFrostedPanel(
       radius: 16,
       blur: 14,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 笔记标题。
-              Text(
-                note.title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontSize: 17),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 6),
-              // 内容摘要（最多显示 3 行）。
-              Text(
-                note.contentMd,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 9),
-              // 底部元信息：更新时间 + 冲突标记。
-              Row(
-                children: [
-                  Text(
-                    formatter.format(note.updatedAt.toLocal()),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const Spacer(),
-                  if (note.isConflictCopy)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF3D9),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color:
+                selected
+                    ? colorScheme.primary.withValues(alpha: 0.08)
+                    : Colors.transparent,
+            border:
+                selected
+                    ? Border.all(color: colorScheme.primary.withValues(alpha: 0.5))
+                    : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
                       child: Text(
-                        l10n.noteConflictTag,
-                        style: const TextStyle(
-                          color: Color(0xFFB54708),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
+                        note.title,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(fontSize: 17),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                ],
-              ),
-            ],
+                    if (selected)
+                      Icon(
+                        CupertinoIcons.check_mark_circled_solid,
+                        size: 18,
+                        color: colorScheme.primary,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  note.contentMd,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    Text(
+                      formatter.format(note.updatedAt.toLocal()),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const Spacer(),
+                    if (note.isConflictCopy)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3D9),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          l10n.noteConflictTag,
+                          style: const TextStyle(
+                            color: Color(0xFFB54708),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -305,17 +497,14 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 空态图标。
           const Icon(
             CupertinoIcons.square_pencil,
             size: 38,
             color: AppColors.textSecondary,
           ),
           const SizedBox(height: 12),
-          // 空态文案。
           Text(l10n.noNotesYet),
           const SizedBox(height: 12),
-          // 主动操作：创建笔记。
           FilledButton.icon(
             onPressed: onCreate,
             icon: const Icon(CupertinoIcons.add),
