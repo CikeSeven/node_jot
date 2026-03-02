@@ -10,12 +10,11 @@ import '../../core/models/app_services.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
-import '../conflicts/conflicts_page.dart';
 import 'note_editor_page.dart';
 
 /// 笔记首页。
 ///
-/// 展示活动笔记列表、冲突入口和新建按钮。
+/// 展示活动笔记列表和新建按钮。
 class NotesPage extends ConsumerWidget {
   const NotesPage({super.key});
 
@@ -49,7 +48,7 @@ class NotesPage extends ConsumerWidget {
         child: SafeArea(
           child: Column(
             children: [
-              // 顶部标题与冲突入口。
+              // 顶部标题。
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                   AppSpacing.l,
@@ -63,27 +62,6 @@ class NotesPage extends ConsumerWidget {
                       child: Text(
                         'NodeJot',
                         style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                    IosFrostedPanel(
-                      padding: const EdgeInsets.all(6),
-                      radius: 14,
-                      blur: 14,
-                      child: IconButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const ConflictsPage(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(
-                          CupertinoIcons.exclamationmark_bubble,
-                          size: 24,
-                        ),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.all(4),
-                        tooltip: l10n.conflicts,
                       ),
                     ),
                   ],
