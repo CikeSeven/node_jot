@@ -86,51 +86,66 @@ class NotesPage extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.m),
-              // 笔记分组标题行（与顶部标题保持同样左右边距）。
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        l10n.tabNotes,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    Text(
-                      DateFormat('MMM d').format(DateTime.now()),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              // 主内容区：保留原有列表结构，去除外层白色毛玻璃底。
+              // 主内容区：标题行作为列表第一个条目，随列表一起滚动。
               Expanded(
                 child: StreamBuilder<List<NoteEntity>>(
                   stream: services.noteRepository.watchActiveNotes(),
                   builder: (context, snapshot) {
                     final notes = snapshot.data ?? const <NoteEntity>[];
-                    if (notes.isEmpty) {
-                      // 空态：提示并引导创建第一条笔记。
-                      return _EmptyState(
-                        onCreate: () => _openEditor(context),
-                      );
-                    }
-
-                    // 有数据时：可滚动笔记列表。
                     return ListView.separated(
                       key: const PageStorageKey<String>('notes_list'),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.l,
-                      ),
-                      itemCount: notes.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      padding: const EdgeInsets.only(bottom: 8),
+                      itemCount: notes.isEmpty ? 2 : notes.length + 1,
+                      separatorBuilder: (context, index) {
+                        // 标题行与内容间距更小，列表项间距保持原样。
+                        return SizedBox(height: index == 0 ? 8 : 10);
+                      },
                       itemBuilder: (context, index) {
-                        final note = notes[index];
-                        return _NoteCard(
-                          note: note,
-                          onTap: () => _openEditor(context, note.noteId),
+                        if (index == 0) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.l,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    l10n.tabNotes,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
+                                  ),
+                                ),
+                                Text(
+                                  DateFormat('MMM d').format(DateTime.now()),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        if (notes.isEmpty) {
+                          // 空态：提示并引导创建第一条笔记。
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.l,
+                            ),
+                            child: _EmptyState(
+                              onCreate: () => _openEditor(context),
+                            ),
+                          );
+                        }
+
+                        final note = notes[index - 1];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.l,
+                          ),
+                          child: _NoteCard(
+                            note: note,
+                            onTap: () => _openEditor(context, note.noteId),
+                          ),
                         );
                       },
                     );
