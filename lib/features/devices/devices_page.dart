@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
+import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../data/isar/collections/device_entity.dart';
 import '../../domain/models/discovered_device.dart';
@@ -25,12 +29,8 @@ class DevicesPage extends ConsumerWidget {
 
     return Container(
       // 页面背景层。
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.backgroundTop, AppColors.backgroundBottom],
-        ),
+      decoration: BoxDecoration(
+        gradient: AppTheme.pageBackground(Theme.of(context).brightness),
       ),
       child: SafeArea(
         child: ListView(
@@ -62,23 +62,15 @@ class DevicesPage extends ConsumerWidget {
               ),
               child: Column(
                 children: [
-                  // 本机设备标识行。
-                  IosCardTile(
-                    title: l10n.deviceIdLabel(local.deviceId.substring(0, 8)),
-                    subtitle: l10n.pairingCodeHint,
-                    leading: const Icon(
-                      CupertinoIcons.device_phone_portrait,
-                      color: AppColors.navActiveText,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   // 动态配对码行（ValueListenable 驱动）。
                   ValueListenableBuilder<String>(
                     valueListenable: services.syncEngine.pairingCode,
                     builder: (context, code, _) {
                       return IosCardTile(
                         title: l10n.pairingCodeDisplay(code),
-                        subtitle: l10n.sixDigitCodeHint,
+                        titleStyle: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontSize: 20, fontWeight: FontWeight.w700),
+                        subtitle: l10n.fourDigitCodeHint,
                         leading: const Icon(
                           CupertinoIcons.number_circle,
                           color: AppColors.navActiveText,
@@ -195,8 +187,12 @@ class DevicesPage extends ConsumerWidget {
                 controller: codeController,
                 decoration: InputDecoration(
                   labelText: l10n.pairingCodeInputLabel,
+                  hintText: l10n.fourDigitCodeHint,
+                  counterText: '',
                 ),
                 keyboardType: TextInputType.number,
+                maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
             ],
           ),
@@ -215,13 +211,19 @@ class DevicesPage extends ConsumerWidget {
     );
 
     if (submitted != true) {
+      hostController.dispose();
+      portController.dispose();
+      codeController.dispose();
       return;
     }
 
     final host = hostController.text.trim();
     final code = codeController.text.trim();
     final port = int.tryParse(portController.text.trim()) ?? 45888;
-    if (host.isEmpty || code.isEmpty) {
+    hostController.dispose();
+    portController.dispose();
+    codeController.dispose();
+    if (host.isEmpty || !RegExp(r'^\d{4}$').hasMatch(code)) {
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -297,51 +299,41 @@ class _DiscoveredDeviceTile extends ConsumerWidget {
     DiscoveredDevice device,
   ) async {
     final l10n = context.l10n;
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(l10n.pairWithDevice),
-          // 弹窗主体：输入对端展示的 6 位配对码。
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(hintText: l10n.sixDigitCodeHint),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(l10n.cancel),
-            ),
-            FilledButton(
-              onPressed:
-                  () => Navigator.of(context).pop(controller.text.trim()),
-              child: Text(l10n.pair),
-            ),
-          ],
-        );
-      },
+    final paired = await _showFourDigitPairDialog(
+      context,
+      _FourDigitPairDialog(
+        title: l10n.pairWithNamedDevice(device.displayName),
+        hint: l10n.fourDigitCodeHint,
+        cancelText: l10n.cancel,
+        invalidCodeText: l10n.pairCodeInvalid,
+        onSubmit: (code) async {
+          try {
+            await services.syncEngine.pairWithDevice(device: device, code: code);
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+      ),
     );
-
-    if (result == null || result.isEmpty) {
+    if (paired != true) {
       return;
     }
-    try {
-      await services.syncEngine.pairWithDevice(device: device, code: result);
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n.pairingSuccess)));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.pairingFailedWithReason(e.toString()))),
-        );
-      }
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.pairingSuccess)));
     }
+  }
+
+  Future<bool?> _showFourDigitPairDialog(
+    BuildContext context,
+    _FourDigitPairDialog dialog,
+  ) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => dialog,
+    );
   }
 
   /// 触发与目标设备的一次同步。
@@ -365,6 +357,208 @@ class _DiscoveredDeviceTile extends ConsumerWidget {
         );
       }
     }
+  }
+}
+
+class _FourDigitPairDialog extends StatefulWidget {
+  const _FourDigitPairDialog({
+    required this.title,
+    required this.hint,
+    required this.cancelText,
+    required this.invalidCodeText,
+    required this.onSubmit,
+  });
+
+  final String title;
+  final String hint;
+  final String cancelText;
+  final String invalidCodeText;
+  final Future<bool> Function(String code) onSubmit;
+
+  @override
+  State<_FourDigitPairDialog> createState() => _FourDigitPairDialogState();
+}
+
+class _FourDigitPairDialogState extends State<_FourDigitPairDialog> {
+  late final List<TextEditingController> _controllers;
+  late final List<FocusNode> _focusNodes;
+  bool _submitting = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(4, (_) => TextEditingController());
+    _focusNodes = List.generate(4, (_) => FocusNode());
+  }
+
+  @override
+  void dispose() {
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  String get _joinedCode => _controllers.map((c) => c.text).join();
+
+  Future<void> _tryAutoSubmit() async {
+    if (_submitting || !RegExp(r'^\d{4}$').hasMatch(_joinedCode)) {
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _hasError = false;
+    });
+
+    final success = await widget.onSubmit(_joinedCode);
+    if (!mounted) {
+      return;
+    }
+    if (success) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    for (final controller in _controllers) {
+      controller.clear();
+    }
+    _focusNodes.first.requestFocus();
+    setState(() {
+      _submitting = false;
+      _hasError = true;
+    });
+  }
+
+  Widget _buildCell(int index) {
+    return SizedBox(
+      width: 52,
+      child: TextField(
+        controller: _controllers[index],
+        focusNode: _focusNodes[index],
+        autofocus: index == 0,
+        maxLength: 1,
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.number,
+        textInputAction: index == 3 ? TextInputAction.done : TextInputAction.next,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: InputDecoration(
+          counterText: '',
+          filled: true,
+          fillColor:
+              _hasError
+                  ? Theme.of(context).colorScheme.error.withValues(alpha: 0.08)
+                  : null,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color:
+                  _hasError
+                      ? Theme.of(context).colorScheme.error
+                      : AppColors.borderSoft,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              width: 1.4,
+              color:
+                  _hasError
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+        onChanged: (value) {
+          if (_submitting) {
+            return;
+          }
+          if (_hasError) {
+            setState(() {
+              _hasError = false;
+            });
+          }
+          if (value.isNotEmpty && index < 3) {
+            _focusNodes[index + 1].requestFocus();
+          }
+          unawaited(_tryAutoSubmit());
+        },
+        onSubmitted: (_) {
+          if (_submitting) {
+            return;
+          }
+          unawaited(_tryAutoSubmit());
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 260,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildCell(0),
+                const SizedBox(width: 8),
+                _buildCell(1),
+                const SizedBox(width: 8),
+                _buildCell(2),
+                const SizedBox(width: 8),
+                _buildCell(3),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_submitting) ...[
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Flexible(
+                  child: Text(
+                    _hasError ? widget.invalidCodeText : widget.hint,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color:
+                          _hasError
+                              ? Theme.of(context).colorScheme.error
+                              : null,
+                      fontWeight: _hasError ? FontWeight.w600 : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              _submitting ? null : () => Navigator.of(context).pop(false),
+          child: Text(widget.cancelText),
+        ),
+      ],
+    );
   }
 }
 

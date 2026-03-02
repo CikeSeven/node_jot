@@ -8,6 +8,7 @@ import '../../data/repositories/note_repository.dart';
 import '../../data/repositories/op_log_repository.dart';
 import '../../data/repositories/sync_cursor_repository.dart';
 import '../services/locale_service.dart';
+import '../services/theme_service.dart';
 import '../../domain/services/crypto_service.dart';
 import '../../domain/services/discovery_service.dart';
 import '../../domain/services/local_device_service.dart';
@@ -29,6 +30,7 @@ class AppServices {
   AppServices._({
     required this.isarService,
     required this.localeService,
+    required this.themeService,
     required this.localDeviceService,
     required this.noteRepository,
     required this.deviceRepository,
@@ -43,6 +45,7 @@ class AppServices {
 
   final IsarService isarService;
   final LocaleService localeService;
+  final ThemeService themeService;
   final LocalDeviceService localDeviceService;
   final NoteRepository noteRepository;
   final DeviceRepository deviceRepository;
@@ -57,6 +60,7 @@ class AppServices {
   /// 按依赖顺序创建所有服务并启动同步引擎。
   static Future<AppServices> create() async {
     final localeService = await LocaleService.create();
+    final themeService = await ThemeService.create();
     final localDeviceService = await LocalDeviceService.create();
     final isarService = await IsarService.open();
 
@@ -89,6 +93,7 @@ class AppServices {
     return AppServices._(
       isarService: isarService,
       localeService: localeService,
+      themeService: themeService,
       localDeviceService: localDeviceService,
       noteRepository: noteRepository,
       deviceRepository: deviceRepository,
@@ -108,6 +113,7 @@ class AppServices {
   Future<void> dispose() async {
     await syncEngine.dispose();
     localeService.dispose();
+    themeService.dispose();
     await isarService.dispose();
   }
 }

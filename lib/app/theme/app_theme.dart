@@ -91,4 +91,103 @@ class AppTheme {
       ),
     );
   }
+
+  /// 深色主题。
+  static ThemeData dark() {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: Brightness.dark,
+      surface: AppColors.surfaceDark,
+      primary: AppColors.primary,
+      secondary: AppColors.accent,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: AppColors.backgroundBottomDark,
+      fontFamily: 'SF Pro Text',
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimaryDark,
+          letterSpacing: -0.6,
+        ),
+        titleMedium: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimaryDark,
+        ),
+        bodyLarge: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textPrimaryDark,
+        ),
+        bodyMedium: TextStyle(fontSize: 14, color: AppColors.textSecondaryDark),
+        bodySmall: TextStyle(fontSize: 13, color: AppColors.textSecondaryDark),
+      ),
+      appBarTheme: const AppBarTheme(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: AppColors.textPrimaryDark,
+        centerTitle: false,
+      ),
+      cardTheme: CardThemeData(
+        color: AppColors.surfaceDark,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.card),
+          side: const BorderSide(color: AppColors.borderSoftDark),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.surfaceSoftDark,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.control),
+          borderSide: const BorderSide(color: AppColors.borderSoftDark),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.control),
+          borderSide: const BorderSide(color: AppColors.borderSoftDark),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.control),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.2),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF11131C).withValues(alpha: 0.92),
+        contentTextStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      cupertinoOverrideTheme: const CupertinoThemeData(
+        primaryColor: AppColors.primary,
+      ),
+    );
+  }
+
+  /// 页面背景渐变，按亮暗主题动态返回。
+  static LinearGradient pageBackground(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors:
+          isDark
+              ? [AppColors.backgroundTopDark, AppColors.backgroundBottomDark]
+              : [AppColors.backgroundTop, AppColors.backgroundBottom],
+    );
+  }
 }

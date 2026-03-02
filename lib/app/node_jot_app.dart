@@ -19,19 +19,26 @@ class NodeJotApp extends ConsumerWidget {
     return ValueListenableBuilder<Locale>(
       valueListenable: services.localeService.localeNotifier,
       builder: (context, locale, _) {
-        return MaterialApp(
-          title: 'NodeJot',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(),
-          locale: locale,
-          supportedLocales: AppLocalizations.supportedLocales,
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          home: const HomeShellPage(),
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: services.themeService.themeModeNotifier,
+          builder: (context, themeMode, _) {
+            return MaterialApp(
+              title: 'NodeJot',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.light(),
+              darkTheme: AppTheme.dark(),
+              themeMode: themeMode,
+              locale: locale,
+              supportedLocales: AppLocalizations.supportedLocales,
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+              ],
+              home: const HomeShellPage(),
+            );
+          },
         );
       },
     );

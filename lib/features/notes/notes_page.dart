@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
+import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
@@ -42,12 +43,8 @@ class NotesPage extends ConsumerWidget {
       ),
       body: Container(
         // 页面主背景：顶部到底部的浅色渐变。
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.backgroundTop, AppColors.backgroundBottom],
-          ),
+        decoration: BoxDecoration(
+          gradient: AppTheme.pageBackground(Theme.of(context).brightness),
         ),
         child: SafeArea(
           child: Column(

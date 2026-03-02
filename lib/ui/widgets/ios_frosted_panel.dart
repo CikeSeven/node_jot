@@ -27,6 +27,7 @@ class IosFrostedPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       // 外层：仅负责圆角阴影，制造悬浮感。
       decoration: BoxDecoration(
@@ -44,13 +45,18 @@ class IosFrostedPanel extends StatelessWidget {
               // 内层：半透明渐变面 + 细边框，提升玻璃质感。
               gradient:
                   gradient ??
-                  const LinearGradient(
+                  LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xC2FFFFFF), Color(0xB8F7F2FF)],
+                    colors:
+                        isDark
+                            ? const [Color(0xCC2A2D3C), Color(0xB3242735)]
+                            : const [Color(0xC2FFFFFF), Color(0xB8F7F2FF)],
                   ),
               border: Border.all(
-                color: AppColors.borderSoft.withValues(alpha: 0.72),
+                color:
+                    (isDark ? AppColors.borderSoftDark : AppColors.borderSoft)
+                        .withValues(alpha: 0.72),
               ),
               borderRadius: BorderRadius.circular(radius),
             ),

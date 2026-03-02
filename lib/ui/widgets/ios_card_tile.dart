@@ -9,6 +9,7 @@ class IosCardTile extends StatelessWidget {
   const IosCardTile({
     super.key,
     required this.title,
+    this.titleStyle,
     this.subtitle,
     this.leading,
     this.trailing,
@@ -16,6 +17,7 @@ class IosCardTile extends StatelessWidget {
   });
 
   final String title;
+  final TextStyle? titleStyle;
   final String? subtitle;
   final Widget? leading;
   final Widget? trailing;
@@ -39,9 +41,11 @@ class IosCardTile extends StatelessWidget {
                   // 主标题。
                   Text(
                     title,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(fontSize: 16),
+                    style:
+                        titleStyle ??
+                        Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(fontSize: 16),
                   ),
                   if (subtitle != null) ...[
                     const SizedBox(height: 3),

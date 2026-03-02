@@ -83,7 +83,10 @@ class AppLocalizations {
       _isZh ? '直连配对失败: $reason' : 'Direct pairing failed: $reason';
   String get discoveryRefreshed => _isZh ? '已刷新发现列表' : 'Discovery refreshed';
   String get pairWithDevice => _isZh ? '与设备配对' : 'Pair with device';
-  String get sixDigitCodeHint => _isZh ? '6 位配对码' : '6-digit code';
+  String pairWithNamedDevice(String name) =>
+      _isZh ? '与$name配对' : 'Pair with $name';
+  String get fourDigitCodeHint => _isZh ? '4 位配对码' : '4-digit code';
+  String get pairCodeInvalid => _isZh ? '配对码错误' : 'Invalid pairing code';
   String get pairingSuccess => _isZh ? '配对成功' : 'Pairing success';
   String pairingFailedWithReason(String reason) =>
       _isZh ? '配对失败: $reason' : 'Pairing failed: $reason';
@@ -92,12 +95,20 @@ class AppLocalizations {
   String syncFailedWithReason(String reason) =>
       _isZh ? '同步失败: $reason' : 'Sync failed: $reason';
   String get settings => _isZh ? '设置' : 'Settings';
+  String get themeMode => _isZh ? '主题模式' : 'Theme Mode';
+  String get themeSystem => _isZh ? '跟随系统' : 'System';
+  String get themeLight => _isZh ? '亮色' : 'Light';
+  String get themeDark => _isZh ? '暗色' : 'Dark';
   String get deviceName => _isZh ? '设备名称' : 'Device Name';
   String get saveDeviceName => _isZh ? '保存设备名称' : 'Save Device Name';
   String get localProfile => _isZh ? '本机信息' : 'Local Profile';
   String deviceIdLabel(String id) => _isZh ? '设备 ID: $id' : 'Device ID: $id';
   String publicKeyLabel(String value) =>
       _isZh ? '公钥: $value' : 'Public Key: $value';
+  String get localFirstDescription =>
+      _isZh
+          ? 'NodeJot 采用本地优先：无云上传、无账号、无服务端依赖。'
+          : 'NodeJot is local-first: no cloud upload, no account, no server dependency.';
   String get saveDeviceNameDone => _isZh ? '保存成功' : 'Saved';
 }
 

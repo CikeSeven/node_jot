@@ -41,6 +41,7 @@ class GlassBottomNav extends StatelessWidget {
       0.0,
       (items.length - 1).toDouble(),
     );
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SafeArea(
       // 悬浮底栏与屏幕边缘保留视觉呼吸感。
@@ -59,12 +60,19 @@ class GlassBottomNav extends StatelessWidget {
               height: 76,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0x66FFFFFF), Color(0x55EFE8FF)],
+                  colors:
+                      isDark
+                          ? const [Color(0xCC2B2F3F), Color(0xB3262938)]
+                          : const [Color(0x66FFFFFF), Color(0x55EFE8FF)],
                 ),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                border: Border.all(
+                  color:
+                      (isDark ? AppColors.borderSoftDark : Colors.white)
+                          .withValues(alpha: 0.5),
+                ),
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {

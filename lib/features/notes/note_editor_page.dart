@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
+import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
@@ -243,12 +244,8 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         ),
         body: Container(
           // 编辑页背景渐变。
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [AppColors.backgroundTop, AppColors.backgroundBottom],
-            ),
+          decoration: BoxDecoration(
+            gradient: AppTheme.pageBackground(Theme.of(context).brightness),
           ),
           child:
               _loading

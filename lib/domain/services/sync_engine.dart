@@ -58,7 +58,7 @@ class SyncEngine {
   final SyncServer _syncServer;
   final SyncClient _syncClient;
 
-  /// 当前显示给用户的 6 位配对码。
+  /// 当前显示给用户的 4 位配对码。
   final ValueNotifier<String> pairingCode;
 
   StreamSubscription<List<DiscoveredDevice>>? _discoverySub;

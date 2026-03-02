@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_colors.dart';
+import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
@@ -25,12 +26,8 @@ class ConflictsPage extends ConsumerWidget {
       appBar: AppBar(title: Text(l10n.conflicts)),
       body: Container(
         // 页面背景层。
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.backgroundTop, AppColors.backgroundBottom],
-          ),
+        decoration: BoxDecoration(
+          gradient: AppTheme.pageBackground(Theme.of(context).brightness),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
