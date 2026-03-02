@@ -11,11 +11,13 @@ class SaveNoteOutcome {
     required this.note,
     required this.isNew,
     required this.createdConflictCopy,
+    required this.hasInlineConflict,
   });
 
   final NoteEntity note;
   final bool isNew;
   final bool createdConflictCopy;
+  final bool hasInlineConflict;
 }
 
 /// 应用远端快照后的结果。
@@ -23,10 +25,12 @@ class ApplyRemoteOutcome {
   const ApplyRemoteOutcome({
     required this.noteId,
     required this.createdConflictCopy,
+    required this.hasInlineConflict,
   });
 
   final String noteId;
   final bool createdConflictCopy;
+  final bool hasInlineConflict;
 }
 
 /// 笔记仓储。
@@ -91,7 +95,7 @@ class NoteRepository {
   ///
   /// - 新笔记：创建 `headRevision=1`；
   /// - 旧笔记：正常快进 revision；
-  /// - revision 不匹配：创建冲突副本，避免覆盖现有内容。
+  /// - revision 不匹配：写入 Git 风格内联冲突块，避免覆盖现有内容。
   Future<SaveNoteOutcome> saveLocalNote({
     required String title,
     required String contentMd,
@@ -127,29 +131,32 @@ class NoteRepository {
           note: note,
           isNew: true,
           createdConflictCopy: false,
+          hasInlineConflict: false,
         );
         return;
       }
 
       if (expectedHeadRevision != null &&
           existing.headRevision != expectedHeadRevision) {
-        final conflict =
-            NoteEntity()
-              ..noteId = newUuid()
-              ..title = '$normalizedTitle (Conflict)'
-              ..contentMd = contentMd
-              ..updatedAt = now
-              ..deletedAt = null
-              ..lastEditorDeviceId = editorDeviceId
-              ..baseRevision = existing.headRevision
-              ..headRevision = existing.headRevision + 1
-              ..isConflictCopy = true
-              ..originNoteId = existing.noteId;
-        await _db.noteEntitys.put(conflict);
+        existing
+          ..title = normalizedTitle
+          ..contentMd = _buildGitConflictContent(
+            localContent: _stripOuterConflictMarkers(existing.contentMd),
+            remoteContent: contentMd,
+          )
+          ..updatedAt = now
+          ..deletedAt = null
+          ..lastEditorDeviceId = editorDeviceId
+          ..baseRevision = existing.headRevision
+          ..headRevision = existing.headRevision + 1
+          ..isConflictCopy = false
+          ..originNoteId = null;
+        await _db.noteEntitys.put(existing);
         outcome = SaveNoteOutcome(
-          note: conflict,
-          isNew: true,
-          createdConflictCopy: true,
+          note: existing,
+          isNew: false,
+          createdConflictCopy: false,
+          hasInlineConflict: true,
         );
         return;
       }
@@ -168,6 +175,7 @@ class NoteRepository {
         note: existing,
         isNew: false,
         createdConflictCopy: false,
+        hasInlineConflict: false,
       );
     });
 
@@ -199,7 +207,7 @@ class NoteRepository {
 
   /// 应用远端笔记快照。
   ///
-  /// 若无法基于 `baseRevision` 快进，则创建远端冲突副本。
+  /// 若无法基于 `baseRevision` 快进，则写入 Git 风格内联冲突块。
   Future<ApplyRemoteOutcome> applyRemoteSnapshot(
     Map<String, dynamic> snapshot,
   ) async {
@@ -238,6 +246,7 @@ class NoteRepository {
         outcome = ApplyRemoteOutcome(
           noteId: fresh.noteId,
           createdConflictCopy: false,
+          hasInlineConflict: false,
         );
         return;
       }
@@ -260,28 +269,52 @@ class NoteRepository {
         outcome = ApplyRemoteOutcome(
           noteId: local.noteId,
           createdConflictCopy: false,
+          hasInlineConflict: false,
         );
         return;
       }
 
-      final conflictCopy =
-          NoteEntity()
-            ..noteId = newUuid()
-            ..title =
-                '${title.trim().isEmpty ? 'Untitled' : title} (Remote Conflict)'
-            ..contentMd = content
-            ..updatedAt = updatedAt
-            ..deletedAt = deletedAt
-            ..lastEditorDeviceId = lastEditorDeviceId
-            ..baseRevision = baseRevision
-            ..headRevision = headRevision
-            ..isConflictCopy = true
-            ..originNoteId = noteId;
+      // 若来自同一编辑设备，说明是远端后续版本到达但本地 revision 游标偏移，
+      // 直接按远端覆盖恢复一致性，避免重复嵌套冲突标记。
+      final shouldRecoverFromRemote = local.lastEditorDeviceId == lastEditorDeviceId;
+      if (shouldRecoverFromRemote) {
+        local
+          ..title = title
+          ..contentMd = content
+          ..updatedAt = updatedAt
+          ..deletedAt = deletedAt
+          ..lastEditorDeviceId = lastEditorDeviceId
+          ..baseRevision = baseRevision
+          ..headRevision = headRevision
+          ..isConflictCopy = incomingConflict
+          ..originNoteId = originNoteId;
+        await _db.noteEntitys.put(local);
+        outcome = ApplyRemoteOutcome(
+          noteId: local.noteId,
+          createdConflictCopy: false,
+          hasInlineConflict: false,
+        );
+        return;
+      }
 
-      await _db.noteEntitys.put(conflictCopy);
+      local
+        ..title = title
+        ..contentMd = _buildGitConflictContent(
+          localContent: _stripOuterConflictMarkers(local.contentMd),
+          remoteContent: content,
+        )
+        ..updatedAt = DateTime.now().toUtc()
+        ..deletedAt = null
+        ..lastEditorDeviceId = lastEditorDeviceId
+        ..baseRevision = baseRevision
+        ..headRevision = headRevision
+        ..isConflictCopy = false
+        ..originNoteId = null;
+      await _db.noteEntitys.put(local);
       outcome = ApplyRemoteOutcome(
-        noteId: conflictCopy.noteId,
-        createdConflictCopy: true,
+        noteId: local.noteId,
+        createdConflictCopy: false,
+        hasInlineConflict: true,
       );
     });
 
@@ -347,5 +380,32 @@ class NoteRepository {
   /// 将笔记快照转为 JSON。
   String toSnapshotJson(NoteEntity note) {
     return jsonEncode(toSnapshot(note));
+  }
+
+  /// 生成 Git 风格的内联冲突内容。
+  String _buildGitConflictContent({
+    required String localContent,
+    required String remoteContent,
+  }) {
+    return '<<<<<<< LOCAL\n'
+        '$localContent\n'
+        '=======\n'
+        '$remoteContent\n'
+        '>>>>>>> REMOTE';
+  }
+
+  String _stripOuterConflictMarkers(String content) {
+    final trimmed = content.trim();
+    if (!trimmed.startsWith('<<<<<<< LOCAL') ||
+        !trimmed.contains('\n=======\n') ||
+        !trimmed.endsWith('>>>>>>> REMOTE')) {
+      return content;
+    }
+    final start = '<<<<<<< LOCAL\n'.length;
+    final mid = trimmed.indexOf('\n=======\n');
+    if (mid <= start) {
+      return content;
+    }
+    return trimmed.substring(start, mid);
   }
 }

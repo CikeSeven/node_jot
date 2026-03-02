@@ -53,6 +53,10 @@ class AppLocalizations {
       _isZh
           ? '检测到冲突，已创建冲突副本。'
           : 'Detected conflict. A conflict copy was created.';
+  String get inlineConflictInserted =>
+      _isZh
+          ? '检测到并发编辑，已插入冲突标记。'
+          : 'Concurrent edit detected. Conflict markers were inserted.';
   String saveFailedWithReason(String reason) =>
       _isZh ? '保存失败: $reason' : 'Save failed: $reason';
   String deleteFailedWithReason(String reason) =>

@@ -29,6 +29,18 @@ enum TrustedDeviceConnectionState {
   invalid,
 }
 
+/// 本地保存触发来源。
+enum SaveTriggerSource {
+  /// 用户编辑器输入触发的本地保存（允许自动同步）。
+  localUser,
+
+  /// 远端同步应用触发的内部保存（不触发自动同步）。
+  remoteApply,
+
+  /// 内部冲突合并/修复触发的保存（不触发自动同步）。
+  internalMerge,
+}
+
 /// NodeJot 同步编排核心。
 ///
 /// 职责：
@@ -85,11 +97,16 @@ class SyncEngine {
 
   StreamSubscription<List<DiscoveredDevice>>? _discoverySub;
   StreamSubscription<List<DeviceEntity>>? _trustedSub;
+  Timer? _autoSyncTimer;
+  bool _autoSyncInFlight = false;
+  bool _autoSyncPending = false;
   final Map<String, DateTime> _lastRegisterAttempts = {};
   final Map<String, DateTime> _lastTrustedProbeAttempts = {};
   final Map<String, DeviceEntity> _trustedById = {};
   final Map<String, DiscoveredDevice> _discoveredById = {};
   final Set<String> _probingTrustedDeviceIds = <String>{};
+  final Set<String> _connectAutoSyncedDeviceIds = <String>{};
+  static const Duration _autoSyncDebounce = Duration(milliseconds: 400);
 
   /// 启动发现服务、同步服务端并订阅发现结果。
   Future<void> start() async {
@@ -117,6 +134,9 @@ class SyncEngine {
         trustedConnectionStates.value,
       )..removeWhere((deviceId, _) => !trustedIds.contains(deviceId));
       trustedConnectionStates.value = next;
+      _connectAutoSyncedDeviceIds.removeWhere(
+        (deviceId) => !trustedIds.contains(deviceId),
+      );
 
       // 仅对新加入的配对设备触发一次即时检查，避免流更新时状态抖动。
       for (final trusted in trustedList) {
@@ -159,6 +179,7 @@ class SyncEngine {
 
   /// 释放同步相关资源。
   Future<void> dispose() async {
+    _autoSyncTimer?.cancel();
     await _trustedSub?.cancel();
     await _discoverySub?.cancel();
     pairingCode.dispose();
@@ -254,6 +275,7 @@ class SyncEngine {
     required String title,
     required String contentMd,
     int? expectedHeadRevision,
+    SaveTriggerSource source = SaveTriggerSource.localUser,
   }) async {
     final profile = _localDeviceService.profile;
     final outcome = await _noteRepository.saveLocalNote(
@@ -278,6 +300,10 @@ class SyncEngine {
         createdAt: DateTime.now().toUtc(),
       ),
     );
+
+    if (source == SaveTriggerSource.localUser) {
+      _scheduleAutoSync();
+    }
 
     return outcome;
   }
@@ -307,6 +333,52 @@ class SyncEngine {
         createdAt: DateTime.now().toUtc(),
       ),
     );
+  }
+
+  /// 调度自动同步（防抖）。
+  void _scheduleAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer(_autoSyncDebounce, () {
+      unawaited(_runAutoSync());
+    });
+  }
+
+  /// 执行自动同步：仅同步到“已连接 + 开启自动同步”的设备。
+  Future<void> _runAutoSync() async {
+    if (_autoSyncInFlight) {
+      _autoSyncPending = true;
+      return;
+    }
+
+    _autoSyncInFlight = true;
+    try {
+      do {
+        _autoSyncPending = false;
+        final targets =
+            _trustedById.values.where((device) {
+              final state = connectionStateOf(device.deviceId);
+              if (state != TrustedDeviceConnectionState.connected) {
+                return false;
+              }
+              return _appSettingsService.getDeviceAutoSyncEnabled(
+                device.deviceId,
+              );
+            }).toList();
+
+        for (final device in targets) {
+          try {
+            await syncWithTrustedDevice(device);
+          } catch (e) {
+            AppLog.w(
+              'sync-engine',
+              'auto sync failed for ${device.displayName} (${device.deviceId}): $e',
+            );
+          }
+        }
+      } while (_autoSyncPending);
+    } finally {
+      _autoSyncInFlight = false;
+    }
   }
 
   /// 使用发现到的设备进行配对。
@@ -520,6 +592,7 @@ class SyncEngine {
     await _deviceRepository.deleteDevice(deviceId);
     await _appSettingsService.removeDeviceAutoSyncEnabled(deviceId);
     await _appSettingsService.removeDeviceOneTimeConnectionEnabled(deviceId);
+    _connectAutoSyncedDeviceIds.remove(deviceId);
     _lastTrustedProbeAttempts.remove(deviceId);
     _probingTrustedDeviceIds.remove(deviceId);
     _trustedById.remove(deviceId);
@@ -566,15 +639,45 @@ class SyncEngine {
         host: device.host,
         port: device.port,
       );
+      final wasConnected =
+          currentState == TrustedDeviceConnectionState.connected;
       _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.connected);
+      if (!wasConnected) {
+        await _syncOnConnectIfEnabled(trusted);
+      }
     } catch (e) {
       AppLog.w(
         'sync-engine',
         'trusted probe failed for ${device.displayName} (${device.host}:${device.port}): $e',
       );
+      _connectAutoSyncedDeviceIds.remove(deviceId);
       _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.invalid);
     } finally {
       _probingTrustedDeviceIds.remove(deviceId);
+    }
+  }
+
+  /// 设备首次连通后自动拉推一次增量，同步开关开启时生效。
+  Future<void> _syncOnConnectIfEnabled(DeviceEntity trusted) async {
+    if (!_appSettingsService.getDeviceAutoSyncEnabled(trusted.deviceId)) {
+      return;
+    }
+    if (_connectAutoSyncedDeviceIds.contains(trusted.deviceId)) {
+      return;
+    }
+    _connectAutoSyncedDeviceIds.add(trusted.deviceId);
+    try {
+      await syncWithTrustedDevice(trusted);
+      AppLog.i(
+        'sync-engine',
+        'auto sync on connect completed for ${trusted.displayName} (${trusted.deviceId})',
+      );
+    } catch (e) {
+      _connectAutoSyncedDeviceIds.remove(trusted.deviceId);
+      AppLog.w(
+        'sync-engine',
+        'auto sync on connect failed for ${trusted.displayName} (${trusted.deviceId}): $e',
+      );
     }
   }
 
@@ -1177,7 +1280,13 @@ class SyncEngine {
         headRevision: payload['headRevision'] as int,
       );
     } else {
-      await _noteRepository.applyRemoteSnapshot(op.payload);
+      final outcome = await _noteRepository.applyRemoteSnapshot(op.payload);
+      if (outcome.hasInlineConflict) {
+        AppLog.w(
+          'sync-engine',
+          'inline conflict inserted for note ${outcome.noteId} from op ${op.opId}',
+        );
+      }
     }
 
     await _opLogRepository.appendOperation(op);

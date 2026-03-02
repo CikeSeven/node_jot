@@ -139,6 +139,11 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       _expectedHeadRevision = result.note.headRevision;
       _lastSavedNormalizedTitle = _normalizedTitle(result.note.title);
       _lastSavedContent = result.note.contentMd;
+      if (result.hasInlineConflict && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.inlineConflictInserted)),
+        );
+      }
     } catch (_) {
       // 自动保存失败时静默等待下一次输入重试，避免频繁打断用户编辑。
     } finally {
