@@ -31,6 +31,12 @@ class DevicesPage extends ConsumerWidget {
     final services = ref.watch(appServicesProvider);
     final local = services.localDeviceService.profile;
     final pairedExpanded = ref.watch(pairedDevicesExpandedProvider);
+    final platform = Theme.of(context).platform;
+    final useSideRail =
+        platform == TargetPlatform.windows || platform == TargetPlatform.macOS;
+    // 与笔记页一致：移动端为悬浮底栏预留安全间距，避免最后内容被遮挡。
+    final listBottomOffset =
+        useSideRail ? 16.0 : 112 + MediaQuery.paddingOf(context).bottom;
 
     return Container(
       // 页面背景层。
@@ -40,11 +46,11 @@ class DevicesPage extends ConsumerWidget {
       child: SafeArea(
         child: ListView(
           // 设备页采用纵向滚动，避免小屏设备内容被截断。
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             AppSpacing.l,
             AppSpacing.m,
             AppSpacing.l,
-            8,
+            listBottomOffset,
           ),
           children: [
             // 页面标题。

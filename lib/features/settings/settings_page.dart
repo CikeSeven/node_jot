@@ -124,6 +124,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final services = ref.watch(appServicesProvider);
     final themeService = services.themeService;
     final platformIcon = _currentPlatformIcon(context);
+    final platform = Theme.of(context).platform;
+    final useSideRail =
+        platform == TargetPlatform.windows || platform == TargetPlatform.macOS;
+    // 与笔记页一致：移动端为悬浮底栏预留安全间距，避免底部内容被遮挡。
+    final listBottomOffset =
+        useSideRail ? 16.0 : 112 + MediaQuery.paddingOf(context).bottom;
 
     return Container(
       // 页面背景层。
@@ -133,11 +139,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: SafeArea(
         child: ListView(
           // 设置页采用滚动布局，兼容小屏与软键盘弹起场景。
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             AppSpacing.l,
             AppSpacing.m,
             AppSpacing.l,
-            8,
+            listBottomOffset,
           ),
           children: [
             // 页面标题。
