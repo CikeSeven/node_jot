@@ -26,6 +26,8 @@ class NoteEditorPage extends ConsumerStatefulWidget {
 class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   static const _autosaveDelay = Duration(milliseconds: 300);
   static const _savedHintHold = Duration(seconds: 3);
+  static const _deleteUndoSnackDuration = Duration(seconds: 4);
+  static const _restoreHintDuration = Duration(seconds: 2);
 
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
@@ -468,8 +470,46 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
     setState(() => _isSaving = true);
     final services = ref.read(appServicesProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    final deletedMessage = l10n.selectedDeleted(1);
+    final restoredMessage = l10n.selectedRestored(1);
+    final undoLabel = l10n.undo;
+    final undoColor = Theme.of(context).colorScheme.primary;
     try {
       await services.syncEngine.deleteLocalNote(id);
+      _activeNoteId = null;
+      _expectedHeadRevision = null;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          duration: _deleteUndoSnackDuration,
+          content: Row(
+            children: [
+              Expanded(child: Text(deletedMessage)),
+              TextButton(
+                onPressed: () async {
+                  messenger.hideCurrentSnackBar();
+                  await services.syncEngine.restoreDeletedLocalNote(id);
+                  messenger.showSnackBar(
+                    SnackBar(
+                      duration: _restoreHintDuration,
+                      content: Text(restoredMessage),
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: undoColor,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(40, 28),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(undoLabel),
+              ),
+            ],
+          ),
+        ),
+      );
       if (mounted) {
         Navigator.of(context).pop();
       }
@@ -477,9 +517,10 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
-          content: Text(context.l10n.deleteFailedWithReason(e.toString())),
+          duration: _restoreHintDuration,
+          content: Text(l10n.deleteFailedWithReason(e.toString())),
         ),
       );
       setState(() => _isSaving = false);
