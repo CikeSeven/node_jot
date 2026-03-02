@@ -123,6 +123,9 @@ class AppLocalizations {
   String syncFailedWithReason(String reason) =>
       _isZh ? '同步失败: $reason' : 'Sync failed: $reason';
   String get settings => _isZh ? '设置' : 'Settings';
+  String get language => _isZh ? '语言' : 'Language';
+  String get languageChinese => _isZh ? '中文' : 'Chinese';
+  String get languageEnglish => _isZh ? '英文' : 'English';
   String get themeMode => _isZh ? '主题模式' : 'Theme Mode';
   String get themeSystem => _isZh ? '跟随系统' : 'System';
   String get themeLight => _isZh ? '亮色' : 'Light';

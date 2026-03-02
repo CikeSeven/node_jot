@@ -61,6 +61,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  String _localeText(Locale locale) {
+    switch (locale.languageCode) {
+      case 'zh':
+        return '中文';
+      case 'en':
+      default:
+        return 'English';
+    }
+  }
+
   Future<void> _showThemeMenu(
     BuildContext context,
     Offset position, {
@@ -115,6 +125,52 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     if (selected != null) {
       await themeService.setThemeMode(selected);
+    }
+  }
+
+  Future<void> _showLanguageMenu(
+    BuildContext context,
+    Offset position, {
+    required Locale currentLocale,
+    required AppServices services,
+    required AppLocalizations l10n,
+  }) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final selected = await showMenu<Locale>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        PopupMenuItem<Locale>(
+          value: const Locale('zh'),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('中文'),
+              if (currentLocale.languageCode == 'zh')
+                Icon(Icons.check, color: Theme.of(context).colorScheme.primary),
+            ],
+          ),
+        ),
+        PopupMenuItem<Locale>(
+          value: const Locale('en'),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('English'),
+              if (currentLocale.languageCode == 'en')
+                Icon(Icons.check, color: Theme.of(context).colorScheme.primary),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (selected != null) {
+      await services.localeService.setLocale(selected);
     }
   }
 
@@ -224,6 +280,42 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         children: [
                           Text(
                             _themeModeText(l10n, mode),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          const Icon(Icons.unfold_more),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // 语言分组。
+            IosGroupSection(
+              title: l10n.language,
+              child: ValueListenableBuilder<Locale>(
+                valueListenable: services.localeService.localeNotifier,
+                builder: (context, locale, _) {
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTapDown: (details) {
+                      _showLanguageMenu(
+                        context,
+                        details.globalPosition,
+                        currentLocale: locale,
+                        services: services,
+                        l10n: l10n,
+                      );
+                    },
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.language),
+                      title: Text(l10n.language),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _localeText(locale),
                             style: const TextStyle(fontSize: 14),
                           ),
                           const Icon(Icons.unfold_more),
