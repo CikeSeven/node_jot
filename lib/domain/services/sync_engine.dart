@@ -21,6 +21,14 @@ import 'local_device_service.dart';
 import 'sync_client.dart';
 import 'sync_server.dart';
 
+/// 已配对设备运行期连接状态。
+enum TrustedDeviceConnectionState {
+  unknown,
+  connecting,
+  connected,
+  invalid,
+}
+
 /// NodeJot 同步编排核心。
 ///
 /// 职责：
@@ -70,13 +78,53 @@ class SyncEngine {
 
   /// 当前显示给用户的 4 位配对码。
   final ValueNotifier<String> pairingCode;
+  final ValueNotifier<Map<String, TrustedDeviceConnectionState>>
+  trustedConnectionStates = ValueNotifier<
+    Map<String, TrustedDeviceConnectionState>
+  >({});
 
   StreamSubscription<List<DiscoveredDevice>>? _discoverySub;
+  StreamSubscription<List<DeviceEntity>>? _trustedSub;
   final Map<String, DateTime> _lastRegisterAttempts = {};
+  final Map<String, DateTime> _lastTrustedProbeAttempts = {};
+  final Map<String, DeviceEntity> _trustedById = {};
+  final Map<String, DiscoveredDevice> _discoveredById = {};
+  final Set<String> _probingTrustedDeviceIds = <String>{};
 
   /// 启动发现服务、同步服务端并订阅发现结果。
   Future<void> start() async {
     await _syncPairingCodeWithSettingsOnStart();
+
+    _trustedSub = _deviceRepository.watchTrustedDevices().listen((trustedList) {
+      final previousIds = _trustedById.keys.toSet();
+      final trustedIds = trustedList.map((e) => e.deviceId).toSet();
+      _trustedById
+        ..clear()
+        ..addEntries(trustedList.map((e) => MapEntry(e.deviceId, e)));
+
+      // 为已配对设备确保存在自动同步配置。
+      for (final trusted in trustedList) {
+        unawaited(_appSettingsService.ensureDeviceAutoSyncEnabled(trusted.deviceId));
+      }
+
+      // 清理已删除设备的运行期状态。
+      final next = Map<String, TrustedDeviceConnectionState>.from(
+        trustedConnectionStates.value,
+      )..removeWhere((deviceId, _) => !trustedIds.contains(deviceId));
+      trustedConnectionStates.value = next;
+
+      // 仅对新加入的配对设备触发一次即时检查，避免流更新时状态抖动。
+      for (final trusted in trustedList) {
+        if (previousIds.contains(trusted.deviceId)) {
+          continue;
+        }
+        final discovered = _discoveredById[trusted.deviceId];
+        if (discovered != null) {
+          unawaited(_probeTrustedDevice(discovered, force: true));
+        }
+      }
+    });
+
     await _discoveryService.start();
     await _syncServer.start(
       port: AppConstants.syncPort,
@@ -93,16 +141,12 @@ class SyncEngine {
         'sync-engine',
         'discovery list updated: ${devices.length} device(s)',
       );
+      _discoveredById
+        ..clear()
+        ..addEntries(devices.map((e) => MapEntry(e.deviceId, e)));
+
       for (final device in devices) {
-        unawaited(
-          _deviceRepository.upsertSeenDevice(
-            deviceId: device.deviceId,
-            displayName: device.displayName,
-            host: device.host,
-            port: device.port,
-            publicKey: device.publicKey,
-          ),
-        );
+        unawaited(_handleDiscoveredDevice(device));
         unawaited(_registerBackIfNeeded(device));
       }
     });
@@ -110,8 +154,10 @@ class SyncEngine {
 
   /// 释放同步相关资源。
   Future<void> dispose() async {
+    await _trustedSub?.cancel();
     await _discoverySub?.cancel();
     pairingCode.dispose();
+    trustedConnectionStates.dispose();
     await _syncServer.stop();
     await _discoveryService.dispose();
   }
@@ -136,7 +182,27 @@ class SyncEngine {
   Future<void> refreshDiscovery() async {
     AppLog.i('sync-engine', 'manual discovery refresh');
     _lastRegisterAttempts.clear();
+    _lastTrustedProbeAttempts.clear();
     await _discoveryService.refreshNow();
+  }
+
+  Future<void> _handleDiscoveredDevice(DiscoveredDevice device) async {
+    await _deviceRepository.upsertSeenDevice(
+      deviceId: device.deviceId,
+      displayName: device.displayName,
+      host: device.host,
+      port: device.port,
+      publicKey: device.publicKey,
+    );
+
+    if (_trustedById.containsKey(device.deviceId)) {
+      await _probeTrustedDevice(device);
+    }
+  }
+
+  TrustedDeviceConnectionState connectionStateOf(String deviceId) {
+    return trustedConnectionStates.value[deviceId] ??
+        TrustedDeviceConnectionState.unknown;
   }
 
   static String _resolveInitialPairingCode({
@@ -284,6 +350,9 @@ class SyncEngine {
       publicKey: remotePublicKey,
       sharedKey: sharedKey,
     );
+    await _appSettingsService.ensureDeviceAutoSyncEnabled(
+      response['deviceId'] as String,
+    );
     AppLog.i('sync-engine', 'pair success with ${device.displayName}');
   }
 
@@ -415,6 +484,172 @@ class SyncEngine {
       lastSeen: DateTime.now().toUtc(),
     );
     await syncWithDevice(pseudoDevice);
+  }
+
+  /// 重新配对已信任设备并立即执行连接检查。
+  Future<void> reconnectTrustedDevice({
+    required DeviceEntity device,
+    required String code,
+  }) async {
+    final discovered = _discoveredById[device.deviceId];
+    final endpoint =
+        discovered ??
+        DiscoveredDevice(
+          deviceId: device.deviceId,
+          displayName: device.displayName,
+          host: device.host,
+          port: device.port,
+          publicKey: device.publicKey,
+          lastSeen: DateTime.now().toUtc(),
+        );
+
+    await pairWithDevice(device: endpoint, code: code);
+    await _probeTrustedDevice(endpoint, force: true);
+  }
+
+  /// 删除已配对设备并清理相关运行期状态。
+  Future<void> deleteTrustedDevice(String deviceId) async {
+    await _deviceRepository.deleteDevice(deviceId);
+    await _appSettingsService.removeDeviceAutoSyncEnabled(deviceId);
+    _lastTrustedProbeAttempts.remove(deviceId);
+    _probingTrustedDeviceIds.remove(deviceId);
+    _trustedById.remove(deviceId);
+    _discoveredById.remove(deviceId);
+    final next = Map<String, TrustedDeviceConnectionState>.from(
+      trustedConnectionStates.value,
+    )..remove(deviceId);
+    trustedConnectionStates.value = next;
+  }
+
+  Future<void> _probeTrustedDevice(
+    DiscoveredDevice device, {
+    bool force = false,
+  }) async {
+    final deviceId = device.deviceId;
+    final trusted = _trustedById[deviceId];
+    if (trusted == null || !trusted.trusted || trusted.sharedKey == null) {
+      return;
+    }
+
+    final now = DateTime.now().toUtc();
+    final lastAttempt = _lastTrustedProbeAttempts[deviceId];
+    if (!force &&
+        lastAttempt != null &&
+        now.difference(lastAttempt) < const Duration(seconds: 8)) {
+      return;
+    }
+    if (_probingTrustedDeviceIds.contains(deviceId)) {
+      return;
+    }
+
+    _lastTrustedProbeAttempts[deviceId] = now;
+    _probingTrustedDeviceIds.add(deviceId);
+    final currentState = connectionStateOf(deviceId);
+    final shouldShowConnecting =
+        force || currentState != TrustedDeviceConnectionState.connected;
+    if (shouldShowConnecting) {
+      _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.connecting);
+    }
+
+    try {
+      final mergedAutoSync = await _syncTrustedSettingsWithPeer(
+        trusted: trusted,
+        host: device.host,
+        port: device.port,
+      );
+      await _appSettingsService.setDeviceAutoSyncEnabled(
+        trusted.deviceId,
+        mergedAutoSync,
+      );
+      _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.connected);
+    } catch (e) {
+      AppLog.w(
+        'sync-engine',
+        'trusted probe failed for ${device.displayName} (${device.host}:${device.port}): $e',
+      );
+      _setTrustedConnectionState(deviceId, TrustedDeviceConnectionState.invalid);
+    } finally {
+      _probingTrustedDeviceIds.remove(deviceId);
+    }
+  }
+
+  Future<bool> _syncTrustedSettingsWithPeer({
+    required DeviceEntity trusted,
+    required String host,
+    required int port,
+  }) async {
+    final localProfile = _localDeviceService.profile;
+    final localAutoSync = _appSettingsService.getDeviceAutoSyncEnabled(
+      trusted.deviceId,
+    );
+
+    final requestEnvelope = await _cryptoService.encryptEnvelope(
+      senderDeviceId: localProfile.deviceId,
+      keyBase64: trusted.sharedKey!,
+      payload: {
+        'type': 'peer_status_request',
+        'requesterDeviceId': localProfile.deviceId,
+        'autoSyncEnabled': localAutoSync,
+      },
+    );
+
+    final responseEnvelope = await _syncClient.send(
+      host: host,
+      port: port,
+      message: requestEnvelope,
+    );
+    final response = await _decryptIfSecure(responseEnvelope, trusted.sharedKey!);
+    if (response['type'] != 'peer_status_response') {
+      throw Exception(
+        (response['message'] as String?) ?? 'Peer status request failed',
+      );
+    }
+
+    final remoteAutoSync = response['autoSyncEnabled'] == true;
+    final mergedAutoSync = localAutoSync && remoteAutoSync;
+
+    if (remoteAutoSync != mergedAutoSync) {
+      final applyEnvelope = await _cryptoService.encryptEnvelope(
+        senderDeviceId: localProfile.deviceId,
+        keyBase64: trusted.sharedKey!,
+        payload: {
+          'type': 'peer_settings_apply',
+          'requesterDeviceId': localProfile.deviceId,
+          'autoSyncEnabled': mergedAutoSync,
+        },
+      );
+
+      final applyResponseEnvelope = await _syncClient.send(
+        host: host,
+        port: port,
+        message: applyEnvelope,
+      );
+      final applyResponse = await _decryptIfSecure(
+        applyResponseEnvelope,
+        trusted.sharedKey!,
+      );
+      if (applyResponse['type'] != 'peer_settings_apply_ok') {
+        throw Exception(
+          (applyResponse['message'] as String?) ?? 'Peer settings apply failed',
+        );
+      }
+    }
+
+    return mergedAutoSync;
+  }
+
+  void _setTrustedConnectionState(
+    String deviceId,
+    TrustedDeviceConnectionState state,
+  ) {
+    final current = trustedConnectionStates.value[deviceId];
+    if (current == state) {
+      return;
+    }
+    final next = Map<String, TrustedDeviceConnectionState>.from(
+      trustedConnectionStates.value,
+    )..[deviceId] = state;
+    trustedConnectionStates.value = next;
   }
 
   /// 处理对端 register 请求并回传本机信息。
@@ -595,6 +830,10 @@ class SyncEngine {
           'received pair_request from ${remoteAddress.address}',
         );
         return _handlePairRequest(message, remoteAddress);
+      case 'peer_status_request':
+        return _handlePeerStatusRequest(message, remoteAddress);
+      case 'peer_settings_apply':
+        return _handlePeerSettingsApply(message, remoteAddress);
       case 'sync_request':
         AppLog.i(
           'sync-engine',
@@ -642,6 +881,7 @@ class SyncEngine {
       publicKey: requesterPublicKey,
       sharedKey: sharedKey,
     );
+    await _appSettingsService.ensureDeviceAutoSyncEnabled(requesterId);
     AppLog.i(
       'sync-engine',
       'pair accepted for $requesterName (${remoteAddress.address})',
@@ -652,6 +892,68 @@ class SyncEngine {
       'deviceId': local.deviceId,
       'displayName': local.displayName,
       'publicKey': local.publicKey,
+    };
+  }
+
+  /// 处理已配对设备连接检查请求，返回当前设备对该对端的自动同步设置。
+  Future<Map<String, dynamic>> _handlePeerStatusRequest(
+    Map<String, dynamic> message,
+    InternetAddress remoteAddress,
+  ) async {
+    final requesterDeviceId = message['requesterDeviceId'] as String?;
+    if (requesterDeviceId == null) {
+      return {'type': 'error', 'message': 'Missing requesterDeviceId'};
+    }
+
+    final requester = await _deviceRepository.getByDeviceId(requesterDeviceId);
+    if (requester == null || !requester.trusted) {
+      return {'type': 'error', 'message': 'Requester is not trusted'};
+    }
+
+    await _appSettingsService.ensureDeviceAutoSyncEnabled(requesterDeviceId);
+    await _deviceRepository.upsertSeenDevice(
+      deviceId: requesterDeviceId,
+      displayName: requester.displayName,
+      host: remoteAddress.address,
+      port: requester.port,
+      publicKey: requester.publicKey,
+    );
+    final autoSyncEnabled = _appSettingsService.getDeviceAutoSyncEnabled(
+      requesterDeviceId,
+    );
+    return {
+      'type': 'peer_status_response',
+      'autoSyncEnabled': autoSyncEnabled,
+    };
+  }
+
+  /// 应用对端下发的自动同步设置。
+  Future<Map<String, dynamic>> _handlePeerSettingsApply(
+    Map<String, dynamic> message,
+    InternetAddress remoteAddress,
+  ) async {
+    final requesterDeviceId = message['requesterDeviceId'] as String?;
+    if (requesterDeviceId == null) {
+      return {'type': 'error', 'message': 'Missing requesterDeviceId'};
+    }
+
+    final requester = await _deviceRepository.getByDeviceId(requesterDeviceId);
+    if (requester == null || !requester.trusted) {
+      return {'type': 'error', 'message': 'Requester is not trusted'};
+    }
+
+    final enabled = message['autoSyncEnabled'] == true;
+    await _deviceRepository.upsertSeenDevice(
+      deviceId: requesterDeviceId,
+      displayName: requester.displayName,
+      host: remoteAddress.address,
+      port: requester.port,
+      publicKey: requester.publicKey,
+    );
+    await _appSettingsService.setDeviceAutoSyncEnabled(requesterDeviceId, enabled);
+    return {
+      'type': 'peer_settings_apply_ok',
+      'autoSyncEnabled': enabled,
     };
   }
 
@@ -669,6 +971,7 @@ class SyncEngine {
       );
       return {'type': 'sync_error', 'message': 'Requester is not trusted'};
     }
+    await _appSettingsService.ensureDeviceAutoSyncEnabled(requesterDeviceId);
 
     await _deviceRepository.upsertSeenDevice(
       deviceId: requesterDeviceId,
@@ -704,6 +1007,7 @@ class SyncEngine {
       );
       return {'type': 'sync_error', 'message': 'Requester is not trusted'};
     }
+    await _appSettingsService.ensureDeviceAutoSyncEnabled(requesterDeviceId);
 
     await _deviceRepository.upsertSeenDevice(
       deviceId: requesterDeviceId,

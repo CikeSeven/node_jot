@@ -24,12 +24,14 @@ class AppSettingsService {
   static const _keyFixedPairingCodeEnabled =
       'app.settings.fixed_pairing_code_enabled';
   static const _keyFixedPairingCode = 'app.settings.fixed_pairing_code';
+  static const _keyDeviceAutoSyncPrefix = 'app.settings.device_auto_sync.';
 
   final SharedPreferences _prefs;
   final ValueNotifier<bool> oneTimeConnectionNotifier;
   final ValueNotifier<bool> autoSyncNotifier;
   final ValueNotifier<bool> fixedPairingCodeEnabledNotifier;
   String? _fixedPairingCode;
+  final Map<String, ValueNotifier<bool>> _deviceAutoSyncNotifiers = {};
 
   /// 固定配对码（4 位数字），未设置时为 null。
   String? get fixedPairingCode => _fixedPairingCode;
@@ -58,6 +60,57 @@ class AppSettingsService {
   Future<void> setAutoSync(bool enabled) async {
     autoSyncNotifier.value = enabled;
     await _prefs.setBool(_keyAutoSync, enabled);
+  }
+
+  /// 读取指定设备的自动同步开关。
+  ///
+  /// 若该设备尚未单独配置，则回退到全局默认自动同步设置。
+  bool getDeviceAutoSyncEnabled(String deviceId) {
+    final key = _deviceAutoSyncKey(deviceId);
+    return _prefs.getBool(key) ?? autoSyncNotifier.value;
+  }
+
+  /// 获取指定设备自动同步开关的监听器。
+  ///
+  /// 首次读取时会从持久化加载，未配置则使用全局默认值初始化内存态。
+  ValueListenable<bool> deviceAutoSyncEnabledListenable(String deviceId) {
+    final existing = _deviceAutoSyncNotifiers[deviceId];
+    if (existing != null) {
+      return existing;
+    }
+    final value = getDeviceAutoSyncEnabled(deviceId);
+    final notifier = ValueNotifier<bool>(value);
+    _deviceAutoSyncNotifiers[deviceId] = notifier;
+    return notifier;
+  }
+
+  /// 为设备初始化自动同步开关（仅当该设备尚无配置时写入）。
+  Future<void> ensureDeviceAutoSyncEnabled(
+    String deviceId, {
+    bool? defaultEnabled,
+  }) async {
+    final key = _deviceAutoSyncKey(deviceId);
+    if (_prefs.containsKey(key)) {
+      final persisted = _prefs.getBool(key) ?? autoSyncNotifier.value;
+      _upsertDeviceAutoSyncNotifier(deviceId, persisted);
+      return;
+    }
+
+    final value = defaultEnabled ?? autoSyncNotifier.value;
+    await _prefs.setBool(key, value);
+    _upsertDeviceAutoSyncNotifier(deviceId, value);
+  }
+
+  /// 更新指定设备自动同步开关。
+  Future<void> setDeviceAutoSyncEnabled(String deviceId, bool enabled) async {
+    await _prefs.setBool(_deviceAutoSyncKey(deviceId), enabled);
+    _upsertDeviceAutoSyncNotifier(deviceId, enabled);
+  }
+
+  /// 删除指定设备自动同步配置（设备解除配对时调用）。
+  Future<void> removeDeviceAutoSyncEnabled(String deviceId) async {
+    await _prefs.remove(_deviceAutoSyncKey(deviceId));
+    _deviceAutoSyncNotifiers.remove(deviceId)?.dispose();
   }
 
   /// 开启/关闭固定配对码。
@@ -98,9 +151,28 @@ class AppSettingsService {
     return code;
   }
 
+  String _deviceAutoSyncKey(String deviceId) {
+    return '$_keyDeviceAutoSyncPrefix$deviceId';
+  }
+
+  void _upsertDeviceAutoSyncNotifier(String deviceId, bool value) {
+    final existing = _deviceAutoSyncNotifiers[deviceId];
+    if (existing != null) {
+      if (existing.value != value) {
+        existing.value = value;
+      }
+      return;
+    }
+    _deviceAutoSyncNotifiers[deviceId] = ValueNotifier<bool>(value);
+  }
+
   void dispose() {
     oneTimeConnectionNotifier.dispose();
     autoSyncNotifier.dispose();
     fixedPairingCodeEnabledNotifier.dispose();
+    for (final notifier in _deviceAutoSyncNotifiers.values) {
+      notifier.dispose();
+    }
+    _deviceAutoSyncNotifiers.clear();
   }
 }

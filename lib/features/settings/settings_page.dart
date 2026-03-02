@@ -241,11 +241,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     title: Text(l10n.fixedPairingCode),
                     subtitle: Text(l10n.fixedPairingCodeHint),
                     onChanged: (value) async {
-                      await services.appSettingsService.setFixedPairingCodeEnabled(
-                        value,
-                        currentPairingCode:
-                            services.syncEngine.pairingCode.value,
-                      );
+                      await services.appSettingsService
+                          .setFixedPairingCodeEnabled(
+                            value,
+                            currentPairingCode:
+                                services.syncEngine.pairingCode.value,
+                          );
                     },
                   );
                 },
@@ -254,9 +255,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const SizedBox(height: 8),
             Text(
               l10n.localFirstDescription,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
             ),
           ],
         ),

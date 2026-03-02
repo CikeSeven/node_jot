@@ -28,7 +28,12 @@ class DiscoveryService {
   bool _started = false;
 
   /// 已发现设备流（实时更新）。
-  Stream<List<DiscoveredDevice>> get devicesStream => _devicesController.stream;
+  ///
+  /// 每次有新订阅时先回放当前缓存列表，避免页面晚订阅时只能等待下一次广播。
+  Stream<List<DiscoveredDevice>> get devicesStream async* {
+    yield _sortedDevices();
+    yield* _devicesController.stream;
+  }
 
   /// 外部直接写入发现结果（例如 register-back 成功后的回填）。
   void upsertDevice({
@@ -349,10 +354,12 @@ class DiscoveryService {
 
   /// 输出排序后的设备列表。
   void _emitDevices() {
-    final list =
-        _devices.values.toList()
-          ..sort((a, b) => a.displayName.compareTo(b.displayName));
-    _devicesController.add(list);
+    _devicesController.add(_sortedDevices());
+  }
+
+  List<DiscoveredDevice> _sortedDevices() {
+    return _devices.values.toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
   }
 
   /// 停止发现服务并释放资源。

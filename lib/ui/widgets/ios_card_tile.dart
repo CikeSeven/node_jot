@@ -11,6 +11,7 @@ class IosCardTile extends StatelessWidget {
     required this.title,
     this.titleStyle,
     this.subtitle,
+    this.subtitleStyle,
     this.leading,
     this.trailing,
     this.onTap,
@@ -19,6 +20,7 @@ class IosCardTile extends StatelessWidget {
   final String title;
   final TextStyle? titleStyle;
   final String? subtitle;
+  final TextStyle? subtitleStyle;
   final Widget? leading;
   final Widget? trailing;
   final VoidCallback? onTap;
@@ -52,9 +54,11 @@ class IosCardTile extends StatelessWidget {
                     // 副标题说明。
                     Text(
                       subtitle!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
+                      style:
+                          subtitleStyle ??
+                          Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                     ),
                   ],
                 ],

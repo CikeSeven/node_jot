@@ -107,7 +107,10 @@ class _PairedDeviceSettingsPageState
                     const Divider(height: 1),
                     ValueListenableBuilder<bool>(
                       valueListenable:
-                          services.appSettingsService.autoSyncNotifier,
+                          services.appSettingsService
+                              .deviceAutoSyncEnabledListenable(
+                                widget.device.deviceId,
+                              ),
                       builder: (context, enabled, _) {
                         return SwitchListTile.adaptive(
                           value: enabled,
@@ -115,8 +118,11 @@ class _PairedDeviceSettingsPageState
                           title: Text(l10n.autoSync),
                           subtitle: Text(l10n.autoSyncHint),
                           onChanged:
-                              (value) =>
-                                  services.appSettingsService.setAutoSync(value),
+                              (value) => services.appSettingsService
+                                  .setDeviceAutoSyncEnabled(
+                                    widget.device.deviceId,
+                                    value,
+                                  ),
                         );
                       },
                     ),
@@ -212,7 +218,7 @@ class _PairedDeviceSettingsPageState
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      await services.deviceRepository.deleteDevice(widget.device.deviceId);
+      await services.syncEngine.deleteTrustedDevice(widget.device.deviceId);
       if (!mounted) {
         return;
       }

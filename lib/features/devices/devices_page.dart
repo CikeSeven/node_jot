@@ -11,6 +11,7 @@ import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../data/isar/collections/device_entity.dart';
 import '../../domain/models/discovered_device.dart';
+import '../../domain/services/sync_engine.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_card_tile.dart';
 import '../../ui/widgets/ios_group_section.dart';
@@ -143,25 +144,38 @@ class DevicesPage extends ConsumerWidget {
                 icon: const Icon(CupertinoIcons.link_circle, size: 16),
                 label: Text(l10n.directPair),
               ),
-              child: StreamBuilder<List<DiscoveredDevice>>(
-                stream: services.syncEngine.discoveredDevices,
-                builder: (context, snapshot) {
-                  final devices = snapshot.data ?? const <DiscoveredDevice>[];
-                  if (devices.isEmpty) {
-                    // 空态：当前局域网未发现节点。
-                    return Text(
-                      l10n.noDevicesFound,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    );
-                  }
-                  return Column(
-                    // 每个条目对应一个发现到的设备。
-                    children:
-                        devices
-                            .map(
-                              (device) => _DiscoveredDeviceTile(device: device),
-                            )
-                            .toList(),
+              child: StreamBuilder<List<DeviceEntity>>(
+                stream: services.syncEngine.trustedDevices,
+                builder: (context, trustedSnapshot) {
+                  final trustedIds =
+                      (trustedSnapshot.data ?? const <DeviceEntity>[])
+                          .map((e) => e.deviceId)
+                          .toSet();
+                  return StreamBuilder<List<DiscoveredDevice>>(
+                    stream: services.syncEngine.discoveredDevices,
+                    builder: (context, snapshot) {
+                      final devices =
+                          (snapshot.data ?? const <DiscoveredDevice>[])
+                              .where((e) => !trustedIds.contains(e.deviceId))
+                              .toList();
+                      if (devices.isEmpty) {
+                        // 空态：当前局域网未发现未配对节点。
+                        return Text(
+                          l10n.noDevicesFound,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        );
+                      }
+                      return Column(
+                        // 每个条目对应一个发现到的未配对设备。
+                        children:
+                            devices
+                                .map(
+                                  (device) =>
+                                      _DiscoveredDeviceTile(device: device),
+                                )
+                                .toList(),
+                      );
+                    },
                   );
                 },
               ),
@@ -664,45 +678,385 @@ class _PairedDeviceTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final services = ref.watch(appServicesProvider);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: IosCardTile(
-        title: device.displayName,
-        subtitle: '${device.host}:${device.port}',
-        leading: const Icon(
-          CupertinoIcons.checkmark_shield,
-          color: AppColors.navActiveText,
-        ),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => PairedDeviceSettingsPage(device: device),
-            ),
-          );
-        },
-        trailing: FilledButton.tonal(
-          // 一键与信任设备执行增量同步。
-          onPressed: () async {
-            try {
-              await services.syncEngine.syncWithTrustedDevice(device);
-              if (context.mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(l10n.syncDone)));
-              }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(l10n.syncFailedWithReason(e.toString())),
-                  ),
-                );
-              }
-            }
+    return ValueListenableBuilder<Map<String, TrustedDeviceConnectionState>>(
+      valueListenable: services.syncEngine.trustedConnectionStates,
+      builder: (context, states, _) {
+        final state =
+            states[device.deviceId] ?? TrustedDeviceConnectionState.unknown;
+        return ValueListenableBuilder<bool>(
+          valueListenable: services.appSettingsService
+              .deviceAutoSyncEnabledListenable(device.deviceId),
+          builder: (context, autoSyncEnabled, _) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: IosCardTile(
+                title: device.displayName,
+                subtitle:
+                    '${device.host}:${device.port} · ${_connectionStateText(l10n, state)}',
+                subtitleStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color:
+                      state == TrustedDeviceConnectionState.invalid
+                          ? Theme.of(context).colorScheme.error
+                          : state == TrustedDeviceConnectionState.connected
+                          ? const Color(0xFF6FCF97)
+                          : AppColors.textSecondary,
+                  fontWeight:
+                      state == TrustedDeviceConnectionState.invalid
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                ),
+                leading: const Icon(
+                  CupertinoIcons.checkmark_shield,
+                  color: AppColors.navActiveText,
+                ),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PairedDeviceSettingsPage(device: device),
+                    ),
+                  );
+                },
+                trailing: _buildTrailingActions(
+                  context: context,
+                  services: services,
+                  state: state,
+                  autoSyncEnabled: autoSyncEnabled,
+                ),
+              ),
+            );
           },
-          child: Text(l10n.sync),
+        );
+      },
+    );
+  }
+
+  String _connectionStateText(
+    AppLocalizations l10n,
+    TrustedDeviceConnectionState state,
+  ) {
+    switch (state) {
+      case TrustedDeviceConnectionState.connecting:
+        return l10n.connecting;
+      case TrustedDeviceConnectionState.connected:
+        return l10n.connected;
+      case TrustedDeviceConnectionState.invalid:
+        return l10n.pairingInvalid;
+      case TrustedDeviceConnectionState.unknown:
+        return l10n.notConnected;
+    }
+  }
+
+  Widget _buildTrailingActions({
+    required BuildContext context,
+    required AppServices services,
+    required TrustedDeviceConnectionState state,
+    required bool autoSyncEnabled,
+  }) {
+    final l10n = context.l10n;
+    if (state == TrustedDeviceConnectionState.invalid) {
+      final colorScheme = Theme.of(context).colorScheme;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 34,
+            child: FilledButton.tonalIcon(
+              onPressed: () => _reconnect(context, services),
+              icon: Icon(CupertinoIcons.arrow_clockwise, size: 14),
+              label: Text(l10n.reconnect),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: const Size(0, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                foregroundColor: colorScheme.error,
+                backgroundColor: colorScheme.errorContainer.withValues(
+                  alpha: 0.45,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: OutlinedButton(
+              onPressed: () => _deleteDevice(context, services),
+              style: OutlinedButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(34, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                foregroundColor: colorScheme.error,
+                side: BorderSide(
+                  color: colorScheme.error.withValues(alpha: 0.45),
+                ),
+              ),
+              child: const Icon(CupertinoIcons.trash, size: 16),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (state == TrustedDeviceConnectionState.connected && autoSyncEnabled) {
+      return Text(
+        l10n.autoSyncEnabledNotice,
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+
+    if (state == TrustedDeviceConnectionState.connecting) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    return FilledButton.tonal(
+      // 一键与信任设备执行增量同步。
+      onPressed: () async {
+        try {
+          await services.syncEngine.syncWithTrustedDevice(device);
+          if (context.mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(l10n.syncDone)));
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(l10n.syncFailedWithReason(e.toString()))),
+            );
+          }
+        }
+      },
+      child: Text(l10n.sync),
+    );
+  }
+
+  Future<void> _reconnect(BuildContext context, AppServices services) async {
+    final l10n = context.l10n;
+    final code = await _showReconnectCodeDialog(context, l10n);
+    if (code == null) {
+      return;
+    }
+
+    try {
+      await services.syncEngine.reconnectTrustedDevice(device: device, code: code);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.pairingSuccess)));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.pairingFailedWithReason(e.toString()))),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteDevice(BuildContext context, AppServices services) async {
+    final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            title: Text(l10n.deleteDevice),
+            content: Text(l10n.deleteDeviceConfirm),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton.tonal(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(l10n.delete),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    await services.syncEngine.deleteTrustedDevice(device.deviceId);
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.deviceDeleted)));
+    }
+  }
+
+  Future<String?> _showReconnectCodeDialog(
+    BuildContext context,
+    AppLocalizations l10n,
+  ) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder:
+          (_) => _SimpleFourDigitCodeDialog(
+            title: l10n.reconnect,
+            hint: l10n.fourDigitCodeHint,
+            invalidCodeText: l10n.pairCodeInvalid,
+            cancelText: l10n.cancel,
+          ),
+    );
+    return result;
+  }
+}
+
+class _SimpleFourDigitCodeDialog extends StatefulWidget {
+  const _SimpleFourDigitCodeDialog({
+    required this.title,
+    required this.hint,
+    required this.invalidCodeText,
+    required this.cancelText,
+  });
+
+  final String title;
+  final String hint;
+  final String invalidCodeText;
+  final String cancelText;
+
+  @override
+  State<_SimpleFourDigitCodeDialog> createState() =>
+      _SimpleFourDigitCodeDialogState();
+}
+
+class _SimpleFourDigitCodeDialogState extends State<_SimpleFourDigitCodeDialog> {
+  late final List<TextEditingController> _controllers;
+  late final List<FocusNode> _focusNodes;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(4, (_) => TextEditingController());
+    _focusNodes = List.generate(4, (_) => FocusNode());
+  }
+
+  @override
+  void dispose() {
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  String get _code => _controllers.map((e) => e.text).join();
+
+  void _submitIfComplete() {
+    if (RegExp(r'^\d{4}$').hasMatch(_code)) {
+      Navigator.of(context).pop(_code);
+      return;
+    }
+    setState(() {
+      _hasError = true;
+    });
+  }
+
+  Widget _buildCell(int index) {
+    return SizedBox(
+      width: 52,
+      child: TextField(
+        controller: _controllers[index],
+        focusNode: _focusNodes[index],
+        autofocus: index == 0,
+        maxLength: 1,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: InputDecoration(
+          counterText: '',
+          filled: true,
+          fillColor:
+              _hasError
+                  ? Theme.of(context).colorScheme.error.withValues(alpha: 0.08)
+                  : null,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color:
+                  _hasError
+                      ? Theme.of(context).colorScheme.error
+                      : AppColors.borderSoft,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              width: 1.4,
+              color:
+                  _hasError
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+        onChanged: (value) {
+          if (_hasError) {
+            setState(() {
+              _hasError = false;
+            });
+          }
+          if (value.isNotEmpty && index < 3) {
+            _focusNodes[index + 1].requestFocus();
+          }
+          if (index == 3 && value.isNotEmpty) {
+            _submitIfComplete();
+          }
+        },
+        onSubmitted: (_) => _submitIfComplete(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 260,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildCell(0),
+                const SizedBox(width: 8),
+                _buildCell(1),
+                const SizedBox(width: 8),
+                _buildCell(2),
+                const SizedBox(width: 8),
+                _buildCell(3),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _hasError ? widget.invalidCodeText : widget.hint,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: _hasError ? Theme.of(context).colorScheme.error : null,
+                fontWeight: _hasError ? FontWeight.w600 : null,
+              ),
+            ),
+          ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(widget.cancelText),
+        ),
+      ],
     );
   }
 }

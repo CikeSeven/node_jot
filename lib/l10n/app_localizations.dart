@@ -38,8 +38,7 @@ class AppLocalizations {
   String get newNote => _isZh ? '新建笔记' : 'New Note';
   String get editNote => _isZh ? '编辑笔记' : 'Edit Note';
   String get titleHint => _isZh ? '标题' : 'Title';
-  String get markdownHint =>
-      _isZh ? '输入笔记...' : 'Type your note...';
+  String get markdownHint => _isZh ? '输入笔记...' : 'Type your note...';
   String get saving => _isZh ? '保存中...' : 'Saving...';
   String get save => _isZh ? '保存' : 'Save';
   String get saved => _isZh ? '已保存' : 'Saved';
@@ -47,7 +46,9 @@ class AppLocalizations {
   String get delete => _isZh ? '删除' : 'Delete';
   String get deleteNoteTitle => _isZh ? '删除笔记' : 'Delete Note';
   String get deleteNoteConfirmMessage =>
-      _isZh ? '确定删除这条笔记吗？此操作无法撤销。' : 'Delete this note? This action cannot be undone.';
+      _isZh
+          ? '确定删除这条笔记吗？此操作无法撤销。'
+          : 'Delete this note? This action cannot be undone.';
   String get conflictCopyCreated =>
       _isZh
           ? '检测到冲突，已创建冲突副本。'
@@ -90,6 +91,13 @@ class AppLocalizations {
   String get pairingSuccess => _isZh ? '配对成功' : 'Pairing success';
   String pairingFailedWithReason(String reason) =>
       _isZh ? '配对失败: $reason' : 'Pairing failed: $reason';
+  String get reconnect => _isZh ? '重新连接' : 'Reconnect';
+  String get connected => _isZh ? '已连接' : 'Connected';
+  String get connecting => _isZh ? '连接中' : 'Connecting';
+  String get notConnected => _isZh ? '未连接' : 'Not Connected';
+  String get pairingInvalid => _isZh ? '配对失效' : 'Pairing invalid';
+  String get autoSyncEnabledNotice =>
+      _isZh ? '已开启自动同步' : 'Auto Sync Enabled';
   String get sync => _isZh ? '同步' : 'Sync';
   String get syncDone => _isZh ? '同步完成' : 'Sync done';
   String syncFailedWithReason(String reason) =>
@@ -111,7 +119,9 @@ class AppLocalizations {
   String get deleteDevice => _isZh ? '删除此设备' : 'Delete Device';
   String get deleting => _isZh ? '删除中...' : 'Deleting...';
   String get deleteDeviceConfirm =>
-      _isZh ? '确定删除该设备吗？删除后需要重新配对。' : 'Delete this device? Pairing will be required again.';
+      _isZh
+          ? '确定删除该设备吗？删除后需要重新配对。'
+          : 'Delete this device? Pairing will be required again.';
   String get deviceDeleted => _isZh ? '设备已删除' : 'Device deleted';
   String get connectionAndSync => _isZh ? '连接与同步' : 'Connection & Sync';
   String get oneTimeConnection => _isZh ? '一次性连接' : 'One-time Connection';
