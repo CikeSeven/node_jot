@@ -14,6 +14,7 @@ import '../../core/utils/app_log.dart';
 import '../../core/utils/note_doc_codec.dart';
 import '../../l10n/app_localizations.dart';
 import 'editor/note_editor_controller.dart';
+import 'editor/note_editor_extensions.dart';
 import 'editor/widgets/note_editor_status_badge.dart';
 
 /// 笔记编辑页（AppFlowy 版本）。
@@ -61,7 +62,10 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       services: ref.read(appServicesProvider),
       initialNoteId: widget.noteId,
     );
-    _commandShortcutEvents = _buildCommandShortcutEvents();
+    _commandShortcutEvents = buildNodeJotCommandShortcutEvents(
+      onSave: _handleManualSave,
+      onMarkdownAwarePaste: _handleMarkdownAwarePaste,
+    );
     // 异步初始化：加载已有笔记或创建新笔记初始文档。
     unawaited(_controller.initialize());
   }
@@ -178,6 +182,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     if (confirmed != true) {
       return;
     }
+    if (!mounted) {
+      return;
+    }
 
     // 删除成功后立刻退出编辑页，并提供撤销入口。
     final messenger = ScaffoldMessenger.of(context);
@@ -198,60 +205,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         ),
       ),
     );
-  }
-
-  /// 组装编辑器命令快捷键。
-  ///
-  /// 处理策略：
-  /// - 先拦截 `Ctrl+V / Cmd+V`；
-  /// - 若剪贴板文本看起来像 Markdown，则转为结构化节点插入；
-  /// - 否则回退 AppFlowy 默认 `pasteCommand`。
-  List<CommandShortcutEvent> _buildCommandShortcutEvents() {
-    // 移除默认粘贴命令，避免与自定义粘贴逻辑并行执行。
-    final commands =
-        standardCommandShortcutEvents
-            .where(
-              (event) =>
-                  event.key != pasteCommand.key &&
-                  event.key != pasteTextWithoutFormattingCommand.key,
-            )
-            .toList(growable: true);
-
-    // 自定义 markdown-aware paste：
-    // - 电脑端 Ctrl/Cmd+V
-    // - 移动端系统粘贴意图（映射到同一 paste command key）
-    final markdownAwarePaste = CommandShortcutEvent(
-      key: pasteCommand.key,
-      command: 'ctrl+v',
-      macOSCommand: 'cmd+v',
-      linuxCommand: 'ctrl+v',
-      getDescription: () => 'NodeJot Markdown-aware paste',
-      handler: (editorState) {
-        // CommandShortcutEvent 的 handler 为同步回调，
-        // 粘贴板读取是异步操作，因此在此启动异步任务并标记事件已处理。
-        unawaited(_handleMarkdownAwarePaste(editorState));
-        return KeyEventResult.handled;
-      },
-    );
-
-    // “粘贴为纯文本”快捷键也路由到同一逻辑：
-    // - markdown 文本仍尝试结构化；
-    // - 非 markdown 回退默认纯文本粘贴。
-    final markdownAwarePasteWithoutFormatting = CommandShortcutEvent(
-      key: pasteTextWithoutFormattingCommand.key,
-      command: 'ctrl+shift+v',
-      macOSCommand: 'cmd+shift+v',
-      linuxCommand: 'ctrl+shift+v',
-      getDescription: () => 'NodeJot Markdown-aware paste without formatting',
-      handler: (editorState) {
-        unawaited(_handleMarkdownAwarePaste(editorState));
-        return KeyEventResult.handled;
-      },
-    );
-
-    commands.insert(0, markdownAwarePasteWithoutFormatting);
-    commands.insert(0, markdownAwarePaste);
-    return commands;
   }
 
   /// 处理 Markdown 感知粘贴。
@@ -393,6 +346,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         autoFocus: true,
         editorStyle: editorStyle,
         commandShortcutEvents: _commandShortcutEvents,
+        characterShortcutEvents: buildNodeJotCharacterShortcutEvents(
+          brightness: Theme.of(context).brightness,
+        ),
         shrinkWrap: false,
       ),
     );
