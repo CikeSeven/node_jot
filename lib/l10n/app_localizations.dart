@@ -115,7 +115,7 @@ class AppLocalizations {
   String get reconnect => _isZh ? '重新连接' : 'Reconnect';
   String get connected => _isZh ? '已连接' : 'Connected';
   String get connecting => _isZh ? '连接中' : 'Connecting';
-  String get notConnected => _isZh ? '未连接' : 'Not Connected';
+  String get notConnected => _isZh ? '设备离线' : 'Device offline';
   String get pairingInvalid => _isZh ? '配对失效' : 'Pairing invalid';
   String get autoSyncEnabledNotice => _isZh ? '已开启自动同步' : 'Auto Sync Enabled';
   String get sync => _isZh ? '同步' : 'Sync';

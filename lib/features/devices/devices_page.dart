@@ -794,6 +794,11 @@ class _PairedDeviceTile extends ConsumerWidget {
       );
     }
 
+    if (state == TrustedDeviceConnectionState.unknown) {
+      // 离线设备不展示同步按钮，避免误触发无效同步。
+      return const SizedBox.shrink();
+    }
+
     return FilledButton.tonal(
       // 一键与信任设备执行增量同步。
       onPressed: () async {

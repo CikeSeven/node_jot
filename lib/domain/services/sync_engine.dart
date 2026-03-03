@@ -162,9 +162,26 @@ class SyncEngine {
         'sync-engine',
         'discovery list updated: ${devices.length} device(s)',
       );
+      final discoveredIds = devices.map((e) => e.deviceId).toSet();
       _discoveredById
         ..clear()
         ..addEntries(devices.map((e) => MapEntry(e.deviceId, e)));
+
+      // 已配对设备从发现列表消失（超过发现 TTL）后，更新为离线状态。
+      for (final trustedId in _trustedById.keys) {
+        if (discoveredIds.contains(trustedId)) {
+          continue;
+        }
+        final currentState = connectionStateOf(trustedId);
+        if (currentState == TrustedDeviceConnectionState.connected ||
+            currentState == TrustedDeviceConnectionState.connecting) {
+          _setTrustedConnectionState(
+            trustedId,
+            TrustedDeviceConnectionState.unknown,
+          );
+          _connectAutoSyncedDeviceIds.remove(trustedId);
+        }
+      }
 
       for (final device in devices) {
         unawaited(_handleDiscoveredDevice(device));
