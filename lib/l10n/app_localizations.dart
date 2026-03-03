@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:intl/intl.dart';
 
 /// 轻量本地化实现（中英文）。
 ///
@@ -38,6 +39,20 @@ class AppLocalizations {
   String get noConflictNotes => _isZh ? '暂无冲突笔记。' : 'No conflict notes.';
   String updatedAtLabel(String value) =>
       _isZh ? '更新于 $value' : 'Updated $value';
+  String get timeJustNow => _isZh ? '刚刚' : 'Just now';
+  String timeMinutesAgo(int minutes) =>
+      _isZh ? '$minutes分钟前' : '$minutes min ago';
+  String timeHoursAgo(int hours) => _isZh ? '$hours小时前' : '$hours hr ago';
+  String timeDaysAgo(int days) => _isZh ? '$days天前' : '$days days ago';
+  String formatMonthDay(DateTime dateTime) {
+    final local = dateTime.toLocal();
+    return _isZh
+        ? DateFormat('M月d日', 'zh').format(local)
+        : DateFormat('MMM d', 'en').format(local);
+  }
+  String formatFullDate(DateTime dateTime) {
+    return DateFormat('yyyy-MM-dd').format(dateTime.toLocal());
+  }
   String get noNotesYet => _isZh ? '还没有笔记' : 'No notes yet';
   String get createNote => _isZh ? '新建笔记' : 'Create Note';
   String get noteConflictTag => _isZh ? '冲突' : 'Conflict';

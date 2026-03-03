@@ -9,6 +9,7 @@ import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../core/utils/note_doc_codec.dart';
+import '../../core/utils/relative_time_formatter.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
@@ -704,7 +705,6 @@ class _NoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final formatter = DateFormat('yyyy-MM-dd HH:mm');
     final colorScheme = Theme.of(context).colorScheme;
     final displayTitle =
         (note.displayTitleCache ?? '').trim().isEmpty
@@ -768,7 +768,11 @@ class _NoteCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      formatter.format(note.updatedAt.toLocal()),
+                      RelativeTimeFormatter.formatUpdatedAt(
+                        updatedAt: note.updatedAt,
+                        now: DateTime.now(),
+                        l10n: l10n,
+                      ),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const Spacer(),

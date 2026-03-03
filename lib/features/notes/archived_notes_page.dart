@@ -1,12 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../core/utils/note_doc_codec.dart';
+import '../../core/utils/relative_time_formatter.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
@@ -107,7 +107,7 @@ class _ArchivedNoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final formatter = DateFormat('yyyy-MM-dd HH:mm');
+    final l10n = context.l10n;
     final displayTitle =
         (note.displayTitleCache ?? '').trim().isEmpty
             ? note.title
@@ -149,7 +149,11 @@ class _ArchivedNoteCard extends StatelessWidget {
                 ] else
                   const SizedBox(height: 6),
                 Text(
-                  formatter.format(note.updatedAt.toLocal()),
+                  RelativeTimeFormatter.formatUpdatedAt(
+                    updatedAt: note.updatedAt,
+                    now: DateTime.now(),
+                    l10n: l10n,
+                  ),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

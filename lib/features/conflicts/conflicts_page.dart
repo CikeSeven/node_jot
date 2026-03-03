@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
+import '../../core/utils/relative_time_formatter.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_card_tile.dart';
@@ -54,9 +54,11 @@ class ConflictsPage extends ConsumerWidget {
                     child: IosCardTile(
                       title: displayTitle,
                       subtitle: l10n.updatedAtLabel(
-                        DateFormat(
-                          'yyyy-MM-dd HH:mm',
-                        ).format(note.updatedAt.toLocal()),
+                        RelativeTimeFormatter.formatUpdatedAt(
+                          updatedAt: note.updatedAt,
+                          now: DateTime.now(),
+                          l10n: l10n,
+                        ),
                       ),
                       trailing: Container(
                         padding: const EdgeInsets.symmetric(
