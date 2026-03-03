@@ -185,21 +185,51 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   /// - 若剪贴板文本看起来像 Markdown，则转为结构化节点插入；
   /// - 否则回退 AppFlowy 默认 `pasteCommand`。
   List<CommandShortcutEvent> _buildCommandShortcutEvents() {
-    return [
-      CommandShortcutEvent(
-        key: 'nodejot_markdown_paste',
-        command: 'ctrl+v',
-        macOSCommand: 'cmd+v',
-        getDescription: () => 'NodeJot Markdown-aware paste',
-        handler: (editorState) {
-          // CommandShortcutEvent 的 handler 为同步回调，
-          // 粘贴板读取是异步操作，因此在此启动异步任务并标记事件已处理。
-          unawaited(_handleMarkdownAwarePaste(editorState));
-          return KeyEventResult.handled;
-        },
-      ),
-      ...standardCommandShortcutEvents,
-    ];
+    // 移除默认粘贴命令，避免与自定义粘贴逻辑并行执行。
+    final commands =
+        standardCommandShortcutEvents
+            .where(
+              (event) =>
+                  event.key != pasteCommand.key &&
+                  event.key != pasteTextWithoutFormattingCommand.key,
+            )
+            .toList(growable: true);
+
+    // 自定义 markdown-aware paste：
+    // - 电脑端 Ctrl/Cmd+V
+    // - 移动端系统粘贴意图（映射到同一 paste command key）
+    final markdownAwarePaste = CommandShortcutEvent(
+      key: pasteCommand.key,
+      command: 'ctrl+v',
+      macOSCommand: 'cmd+v',
+      linuxCommand: 'ctrl+v',
+      getDescription: () => 'NodeJot Markdown-aware paste',
+      handler: (editorState) {
+        // CommandShortcutEvent 的 handler 为同步回调，
+        // 粘贴板读取是异步操作，因此在此启动异步任务并标记事件已处理。
+        unawaited(_handleMarkdownAwarePaste(editorState));
+        return KeyEventResult.handled;
+      },
+    );
+
+    // “粘贴为纯文本”快捷键也路由到同一逻辑：
+    // - markdown 文本仍尝试结构化；
+    // - 非 markdown 回退默认纯文本粘贴。
+    final markdownAwarePasteWithoutFormatting = CommandShortcutEvent(
+      key: pasteTextWithoutFormattingCommand.key,
+      command: 'ctrl+shift+v',
+      macOSCommand: 'cmd+shift+v',
+      linuxCommand: 'ctrl+shift+v',
+      getDescription: () => 'NodeJot Markdown-aware paste without formatting',
+      handler: (editorState) {
+        unawaited(_handleMarkdownAwarePaste(editorState));
+        return KeyEventResult.handled;
+      },
+    );
+
+    commands.insert(0, markdownAwarePasteWithoutFormatting);
+    commands.insert(0, markdownAwarePaste);
+    return commands;
   }
 
   /// 处理 Markdown 感知粘贴。
@@ -236,10 +266,23 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         return;
       }
 
+      // 选择路径在移动端可能指向行内节点，不能直接用于“插入块”。
+      // 这里统一转换为顶层块路径：在当前块后插入。
+      final blockCount = editorState.document.root.children.length;
+      final currentBlockIndex =
+          selection.end.path.isEmpty ? 0 : selection.end.path.first;
+      final clampedBlockIndex =
+          currentBlockIndex < 0
+              ? 0
+              : (currentBlockIndex >= blockCount
+                  ? (blockCount == 0 ? 0 : blockCount - 1)
+                  : currentBlockIndex);
+      final insertBlockIndex = blockCount == 0 ? 0 : clampedBlockIndex + 1;
+
       final transaction = editorState.transaction;
-      transaction.insertNodes(selection.end.path, nodes);
+      transaction.insertNodes([insertBlockIndex], nodes);
       transaction.afterSelection = Selection.single(
-        path: selection.end.path,
+        path: [insertBlockIndex],
         startOffset: 0,
       );
       await editorState.apply(transaction);
