@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:characters/characters.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
@@ -11,9 +11,12 @@ import '../../core/models/app_services.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
 
+/// 编辑器显示模式。
+enum _EditorViewMode { edit, preview }
+
 /// 笔记编辑页。
 ///
-/// 支持创建、编辑、保存与软删除。
+/// 支持创建、编辑、保存、软删除与 Markdown 预览。
 class NoteEditorPage extends ConsumerStatefulWidget {
   const NoteEditorPage({super.key, this.noteId});
 
@@ -31,6 +34,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
+  final _editScrollController = ScrollController();
+  final _previewScrollController = ScrollController();
+
   Timer? _autosaveTimer;
   Timer? _savedHintTimer;
 
@@ -39,11 +45,13 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   bool _hasPendingSave = false;
   bool _isBootstrapping = true;
   bool _muteDraftListener = false;
+  bool _showSavedHintInBadge = false;
+  bool _previewScrollInitialized = false;
   int? _expectedHeadRevision;
   String? _activeNoteId;
   String _lastSavedNormalizedTitle = '';
   String _lastSavedContent = '';
-  bool _showSavedHintInBadge = false;
+  _EditorViewMode _viewMode = _EditorViewMode.edit;
 
   bool get _isNewNoteSession => widget.noteId == null;
 
@@ -191,6 +199,43 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     return true;
   }
 
+  void _switchViewMode(_EditorViewMode mode) {
+    if (_viewMode == mode) {
+      return;
+    }
+    if (mode == _EditorViewMode.preview) {
+      FocusScope.of(context).unfocus();
+    }
+    setState(() {
+      _viewMode = mode;
+    });
+
+    if (mode == _EditorViewMode.preview && !_previewScrollInitialized) {
+      _previewScrollInitialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _syncPreviewScrollFromEdit();
+      });
+    }
+  }
+
+  /// 首次进入预览时按滚动比例对齐，避免从顶部突变。
+  void _syncPreviewScrollFromEdit() {
+    if (!mounted) {
+      return;
+    }
+    if (!_editScrollController.hasClients || !_previewScrollController.hasClients) {
+      return;
+    }
+    final editMax = _editScrollController.position.maxScrollExtent;
+    final ratio =
+        editMax <= 0
+            ? 0.0
+            : (_editScrollController.offset / editMax).clamp(0.0, 1.0).toDouble();
+    final previewMax = _previewScrollController.position.maxScrollExtent;
+    final target = (previewMax * ratio).clamp(0.0, previewMax).toDouble();
+    _previewScrollController.jumpTo(target);
+  }
+
   @override
   void dispose() {
     _autosaveTimer?.cancel();
@@ -199,13 +244,14 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     _contentController.removeListener(_onDraftChanged);
     _titleController.dispose();
     _contentController.dispose();
+    _editScrollController.dispose();
+    _previewScrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    // 顶部标题根据是否已有 noteId 区分“新建/编辑”。
     final title = _isNewNoteSession ? l10n.newNote : l10n.editNote;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -221,22 +267,53 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
             ),
           ),
           actions: [
-            IconButton(
-              style: ButtonStyle(
-                foregroundColor: MaterialStateProperty.resolveWith<Color?>(
-                  (states) {
-                    if (states.contains(MaterialState.disabled)) {
-                      return colorScheme.onSurface.withValues(alpha: 0.38);
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: SizedBox(
+                width: 150,
+                child: CupertinoSlidingSegmentedControl<_EditorViewMode>(
+                  groupValue: _viewMode,
+                  thumbColor: colorScheme.primary.withValues(alpha: 0.22),
+                  backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.38,
+                  ),
+                  children: {
+                    _EditorViewMode.edit: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: Text(l10n.editorMode),
+                    ),
+                    _EditorViewMode.preview: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: Text(l10n.previewMode),
+                    ),
+                  },
+                  onValueChanged: (value) {
+                    if (value != null) {
+                      _switchViewMode(value);
                     }
-                    return colorScheme.primary.withValues(alpha: 0.78);
                   },
                 ),
+              ),
+            ),
+            IconButton(
+              style: ButtonStyle(
+                foregroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                  if (states.contains(WidgetState.disabled)) {
+                    return colorScheme.onSurface.withValues(alpha: 0.38);
+                  }
+                  return colorScheme.primary.withValues(alpha: 0.78);
+                }),
               ),
               onPressed: _isSaving ? null : _saveNow,
               icon: const Icon(Icons.save_outlined),
               tooltip: l10n.save,
             ),
-            // 仅编辑已有笔记时展示手动删除入口。
             if (!_isNewNoteSession)
               IconButton(
                 onPressed: _isSaving ? null : _confirmAndDeleteNote,
@@ -250,85 +327,22 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
           ],
         ),
         body: Container(
-          // 编辑页背景渐变。
           decoration: BoxDecoration(
             gradient: AppTheme.pageBackground(Theme.of(context).brightness),
           ),
           child:
               _loading
-                  // 首次载入旧笔记时的加载态。
                   ? const Center(child: CircularProgressIndicator())
                   : SafeArea(
                     child: Stack(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              const titleAreaEstimate = 72.0;
-                              final contentMinHeight =
-                                  (constraints.maxHeight - titleAreaEstimate)
-                                      .clamp(140.0, double.infinity)
-                                      .toDouble();
-
-                              return ListView(
-                                padding: const EdgeInsets.only(
-                                  top: 6,
-                                  bottom: 72,
-                                ),
-                                keyboardDismissBehavior:
-                                    ScrollViewKeyboardDismissBehavior.manual,
-                                children: [
-                                  // 标题输入区（随正文一起滚动）。
-                                  TextField(
-                                    controller: _titleController,
-                                    maxLines: 1,
-                                    textInputAction: TextInputAction.next,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleLarge?.copyWith(
-                                      fontSize: 34,
-                                      letterSpacing: -0.8,
-                                    ),
-                                    decoration: InputDecoration(
-                                      hintText: l10n.titleHint,
-                                      filled: false,
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            vertical: 10,
-                                          ),
-                                    ),
-                                  ),
-                                  // 标题与正文间的分割线。
-                                  const Divider(height: 1, thickness: 1),
-                                  // 正文输入区：至少占满视口剩余高度，同时可继续向下增长滚动。
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      minHeight: contentMinHeight,
-                                    ),
-                                    child: TextField(
-                                      controller: _contentController,
-                                      maxLines: null,
-                                      textAlignVertical:
-                                          TextAlignVertical.top,
-                                      decoration: InputDecoration(
-                                        hintText: l10n.markdownHint,
-                                        filled: false,
-                                        border: InputBorder.none,
-                                        enabledBorder: InputBorder.none,
-                                        focusedBorder: InputBorder.none,
-                                        contentPadding: const EdgeInsets.only(
-                                          top: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
+                        Positioned.fill(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child:
+                                _viewMode == _EditorViewMode.edit
+                                    ? _buildEditBody()
+                                    : _buildPreviewBody(),
                           ),
                         ),
                         Positioned(
@@ -409,6 +423,157 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
                       ],
                     ),
                   ),
+        ),
+      ),
+    );
+  }
+
+  /// 编辑模式 UI：标题输入 + 正文输入。
+  Widget _buildEditBody() {
+    final l10n = context.l10n;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const titleAreaEstimate = 72.0;
+        final contentMinHeight =
+            (constraints.maxHeight - titleAreaEstimate)
+                .clamp(140.0, double.infinity)
+                .toDouble();
+
+        return ListView(
+          controller: _editScrollController,
+          padding: const EdgeInsets.only(top: 6, bottom: 72),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+          children: [
+            TextField(
+              controller: _titleController,
+              maxLines: 1,
+              textInputAction: TextInputAction.next,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontSize: 34,
+                letterSpacing: -0.8,
+              ),
+              decoration: InputDecoration(
+                hintText: l10n.titleHint,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+            ),
+            const Divider(height: 1, thickness: 1),
+            ConstrainedBox(
+              constraints: BoxConstraints(minHeight: contentMinHeight),
+              child: TextField(
+                controller: _contentController,
+                maxLines: null,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: InputDecoration(
+                  hintText: l10n.markdownHint,
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.only(top: 12),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 预览模式 UI：标题文本 + Markdown 渲染内容。
+  Widget _buildPreviewBody() {
+    final l10n = context.l10n;
+    final title = _titleController.text.trim();
+    final content = _contentController.text;
+    final showEmptyHint = content.trim().isEmpty;
+
+    return ListView(
+      controller: _previewScrollController,
+      padding: const EdgeInsets.only(top: 6, bottom: 72),
+      children: [
+        if (title.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontSize: 34, letterSpacing: -0.8),
+            ),
+          ),
+        const Divider(height: 1, thickness: 1),
+        if (showEmptyHint)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Text(
+              l10n.markdownHint,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: MarkdownBody(
+              data: content,
+              styleSheet: _buildMarkdownStyle(context),
+              selectable: true,
+            ),
+          ),
+      ],
+    );
+  }
+
+  MarkdownStyleSheet _buildMarkdownStyle(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return MarkdownStyleSheet.fromTheme(theme).copyWith(
+      p: theme.textTheme.bodyLarge?.copyWith(height: 1.62),
+      h1: theme.textTheme.headlineMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.4,
+      ),
+      h2: theme.textTheme.headlineSmall?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.25,
+      ),
+      h3: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+      blockquote: theme.textTheme.bodyMedium?.copyWith(
+        color: AppColors.textSecondary,
+      ),
+      blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      blockquoteDecoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.36),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(
+          left: BorderSide(
+            color: colorScheme.primary.withValues(alpha: 0.45),
+            width: 3,
+          ),
+        ),
+      ),
+      code: theme.textTheme.bodyMedium?.copyWith(
+        fontFamily: 'monospace',
+        backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.68,
+        ),
+      ),
+      codeblockPadding: const EdgeInsets.all(12),
+      codeblockDecoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      listBullet: theme.textTheme.bodyLarge,
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+          ),
         ),
       ),
     );

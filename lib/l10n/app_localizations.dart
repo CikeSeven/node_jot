@@ -45,6 +45,8 @@ class AppLocalizations {
   String get editNote => _isZh ? '编辑笔记' : 'Edit Note';
   String get titleHint => _isZh ? '标题' : 'Title';
   String get markdownHint => _isZh ? '输入笔记...' : 'Type your note...';
+  String get editorMode => _isZh ? '编辑' : 'Edit';
+  String get previewMode => _isZh ? '预览' : 'Preview';
   String get saving => _isZh ? '保存中...' : 'Saving...';
   String get save => _isZh ? '保存' : 'Save';
   String get saved => _isZh ? '已保存' : 'Saved';
