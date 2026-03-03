@@ -35,7 +35,6 @@ class NoteEditorController {
   String? _currentNoteId;
   int? _expectedHeadRevision;
   bool _createdDuringSession = false;
-  String? _initialDraftDocJson;
   String _lastSavedDocJson = '';
   bool _disposed = false;
   bool _savingInFlight = false;
@@ -72,9 +71,6 @@ class NoteEditorController {
       _expectedHeadRevision = existing?.headRevision;
 
       final snapshot = NoteDocCodec.fromDocument(_editorState!.document);
-      if (existing == null) {
-        _initialDraftDocJson = snapshot.contentDocJson;
-      }
       markdownNotifier.value = snapshot.contentMd;
       charCountNotifier.value = _countCharacters(snapshot.contentMd);
       _lastSavedDocJson = existing == null ? '' : snapshot.contentDocJson;
@@ -119,7 +115,7 @@ class NoteEditorController {
     }
 
     // 新建草稿仅包含默认标题时不立即落库，避免产生空笔记。
-    if (_currentNoteId == null && _isInitialDraft(snapshot.contentDocJson)) {
+    if (_currentNoteId == null && _isInitialDraftDocument(state.document)) {
       return false;
     }
 
@@ -162,8 +158,7 @@ class NoteEditorController {
     if (state == null) {
       return;
     }
-    final currentSnapshot = NoteDocCodec.fromDocument(state.document);
-    if (!_isInitialDraft(currentSnapshot.contentDocJson)) {
+    if (!_isInitialDraftDocument(state.document)) {
       return;
     }
     await services.syncEngine.deleteLocalNote(noteId);
@@ -187,13 +182,52 @@ class NoteEditorController {
     await services.syncEngine.restoreDeletedLocalNote(noteId);
   }
 
-  /// 新建草稿是否仍处于初始模板状态（用于保存/退出删除判定）。
-  bool _isInitialDraft(String docJson) {
-    final initial = _initialDraftDocJson;
-    if (initial == null) {
+  /// 新建草稿是否仍处于初始模板状态（仅含默认 H1 标题且无正文）。
+  bool _isInitialDraftDocument(Document document) {
+    final blocks = document.root.children;
+    if (blocks.isEmpty) {
+      return true;
+    }
+
+    var hasDefaultH1 = false;
+    for (final block in blocks) {
+      final text =
+          _extractBlockText(block).replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (text.isEmpty) {
+        continue;
+      }
+
+      final level = (block.attributes['level'] as num?)?.toInt();
+      final isDefaultHeading =
+          block.type == 'heading' &&
+          level == 1 &&
+          (text == NoteDocCodec.defaultHeading || text.toLowerCase() == 'title');
+      if (isDefaultHeading && !hasDefaultH1) {
+        hasDefaultH1 = true;
+        continue;
+      }
       return false;
     }
-    return docJson == initial;
+
+    return hasDefaultH1;
+  }
+
+  String _extractBlockText(Node node) {
+    final pieces = <String>[];
+    final delta = node.delta;
+    if (delta != null) {
+      final text = delta.toPlainText().replaceAll('\n', ' ').trim();
+      if (text.isNotEmpty) {
+        pieces.add(text);
+      }
+    }
+    for (final child in node.children) {
+      final text = _extractBlockText(child);
+      if (text.isNotEmpty) {
+        pieces.add(text);
+      }
+    }
+    return pieces.join(' ').trim();
   }
 
   int _countCharacters(String markdown) {

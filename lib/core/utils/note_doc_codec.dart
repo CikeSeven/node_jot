@@ -64,14 +64,17 @@ class NoteDocCodec {
   }
 
   static NoteDocSnapshot fromDocument(Document document) {
-    final markdown = AppFlowyEditorMarkdownCodec().encode(document).toString();
-    final title = _extractDisplayTitle(markdown);
-    final preview = _extractPreviewText(markdown);
+    final summary = _summarizeDocument(document);
+    final markdown = _encodeMarkdownBestEffort(
+      document: document,
+      fallbackTitle: summary.title,
+      bodyLines: summary.bodyLines,
+    );
     return NoteDocSnapshot(
       contentDocJson: jsonEncode(document.toJson()),
       contentMd: markdown,
-      displayTitle: title,
-      previewText: preview,
+      displayTitle: summary.title,
+      previewText: summary.preview,
       contentFormat: contentFormat,
       schemaVersion: schemaVersion,
     );
@@ -130,9 +133,8 @@ class NoteDocCodec {
             Document.fromJson(raw),
             fallbackHeading: normalizedHeading,
           );
-          final markdown = AppFlowyEditorMarkdownCodec().encode(document).toString().trim();
-          // 旧数据中可能存在“可反序列化但不可渲染”的文档，空渲染时回退到 Markdown。
-          if (markdown.isNotEmpty) {
+          // 旧版本可能写入了非 page/block 结构，直接回退到 markdown 兼容路径。
+          if (_looksLikeRenderableBlockDocument(document)) {
             return document;
           }
         }
@@ -210,4 +212,111 @@ class NoteDocCodec {
         .trim();
     return plain;
   }
+
+  static bool _looksLikeRenderableBlockDocument(Document document) {
+    if (document.root.children.isEmpty) {
+      return false;
+    }
+    // 最常见的错误结构是顶层直接为 text 节点，这在 AppFlowy Editor 中不会按块渲染。
+    for (final node in document.root.children) {
+      if (node.type == 'text') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static _DocumentSummary _summarizeDocument(Document document) {
+    final blocks = document.root.children;
+    var title = defaultHeading;
+    var titleIndex = -1;
+
+    for (var i = 0; i < blocks.length; i++) {
+      final text = _nodePlainText(blocks[i]);
+      if (text.isEmpty) {
+        continue;
+      }
+      final level = (blocks[i].attributes['level'] as num?)?.toInt();
+      final isH1 = blocks[i].type == 'heading' && level == 1;
+      if (isH1) {
+        title = text;
+        titleIndex = i;
+        break;
+      }
+      if (titleIndex == -1) {
+        title = text;
+        titleIndex = i;
+      }
+    }
+
+    final bodyLines = <String>[];
+    for (var i = 0; i < blocks.length; i++) {
+      if (i == titleIndex) {
+        continue;
+      }
+      final text = _nodePlainText(blocks[i]);
+      if (text.isEmpty) {
+        continue;
+      }
+      bodyLines.add(text);
+    }
+
+    final preview = bodyLines.take(4).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return _DocumentSummary(title: title, preview: preview, bodyLines: bodyLines);
+  }
+
+  static String _nodePlainText(Node node) {
+    final parts = <String>[];
+
+    final delta = node.delta;
+    if (delta != null) {
+      final text = delta.toPlainText().replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (text.isNotEmpty) {
+        parts.add(text);
+      }
+    }
+
+    for (final child in node.children) {
+      final text = _nodePlainText(child);
+      if (text.isNotEmpty) {
+        parts.add(text);
+      }
+    }
+
+    return parts.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  static String _encodeMarkdownBestEffort({
+    required Document document,
+    required String fallbackTitle,
+    required List<String> bodyLines,
+  }) {
+    try {
+      final markdown = AppFlowyEditorMarkdownCodec().encode(document).toString();
+      if (markdown.trim().isNotEmpty) {
+        return markdown;
+      }
+    } catch (_) {
+      // ignore and use fallback markdown.
+    }
+
+    final normalizedTitle =
+        fallbackTitle.trim().isEmpty ? defaultHeading : fallbackTitle.trim();
+    if (bodyLines.isEmpty) {
+      return '# $normalizedTitle\n\n';
+    }
+    return '# $normalizedTitle\n\n${bodyLines.join('\n')}';
+  }
+}
+
+class _DocumentSummary {
+  const _DocumentSummary({
+    required this.title,
+    required this.preview,
+    required this.bodyLines,
+  });
+
+  final String title;
+  final String preview;
+  final List<String> bodyLines;
 }
