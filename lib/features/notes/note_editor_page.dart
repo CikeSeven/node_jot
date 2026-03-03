@@ -287,9 +287,10 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     final l10n = context.l10n;
-    final iconColor = Theme.of(
-      context,
-    ).colorScheme.primary.withValues(alpha: 0.82);
+    final strongSaveIconColor =
+        Theme.of(context).brightness == Brightness.dark
+            ? AppColors.textPrimaryDark
+            : AppColors.textPrimary;
     return AppBar(
       title: Text(l10n.editNote),
       leading: IconButton(
@@ -298,21 +299,29 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         icon: const Icon(CupertinoIcons.chevron_back),
       ),
       actions: [
-        // 手动保存按钮：
-        // 保存中显示小转圈，避免重复点击触发并发保存。
+        // 保存按钮：自动保存与手动保存共用同一个 loading 反馈。
         ValueListenableBuilder<bool>(
-          valueListenable: _controller.savingNotifier,
-          builder: (context, saving, _) {
-            return IconButton(
-              tooltip: l10n.save,
-              onPressed: saving ? null : _handleManualSave,
-              icon:
-                  saving
-                      ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2.0),
-                      )
-                      : Icon(Icons.save_outlined, color: iconColor),
+          valueListenable: _controller.autoSavingNotifier,
+          builder: (context, autoSaving, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: _controller.savingNotifier,
+              builder: (context, saving, _) {
+                final isBusy = saving || autoSaving;
+                return IconButton(
+                  tooltip: l10n.save,
+                  onPressed: isBusy ? null : _handleManualSave,
+                  icon:
+                      isBusy
+                          ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2.0),
+                          )
+                          : Icon(
+                            Icons.save_outlined,
+                            color: strongSaveIconColor,
+                          ),
+                );
+              },
             );
           },
         ),

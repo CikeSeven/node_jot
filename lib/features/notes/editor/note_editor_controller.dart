@@ -27,12 +27,16 @@ class NoteEditorController {
   ///
   /// 当前采用低耦合策略：定时检查文档快照变化，而不是强依赖编辑器事件流。
   static const Duration _autoSaveInterval = Duration(milliseconds: 700);
+  static const Duration _autoSaveQuietWindow = Duration(milliseconds: 1200);
 
   /// 页面初始化/加载状态。
   final ValueNotifier<bool> loadingNotifier = ValueNotifier<bool>(true);
 
   /// 当前是否正在执行保存请求。
   final ValueNotifier<bool> savingNotifier = ValueNotifier<bool>(false);
+
+  /// 自动保存是否正在执行（用于右上角状态提示）。
+  final ValueNotifier<bool> autoSavingNotifier = ValueNotifier<bool>(false);
 
   /// 当前文档对应的 markdown 快照（用于预览、字数统计等 UI）。
   final ValueNotifier<String> markdownNotifier = ValueNotifier<String>(
@@ -64,6 +68,8 @@ class NoteEditorController {
   ///
   /// 用于判断“是否发生变化”，避免无意义重复写库。
   String _lastSavedDocJson = '';
+  String? _pendingAutoDocJson;
+  DateTime? _pendingAutoChangedAt;
 
   /// 控制器是否已释放。
   bool _disposed = false;
@@ -154,13 +160,33 @@ class NoteEditorController {
       return false;
     }
 
+    // 自动保存防抖：内容持续变化时不立即写库，仅在静默窗口后保存。
+    if (!force) {
+      final now = DateTime.now();
+      if (_pendingAutoDocJson != snapshot.contentDocJson) {
+        _pendingAutoDocJson = snapshot.contentDocJson;
+        _pendingAutoChangedAt = now;
+        return false;
+      }
+      final changedAt = _pendingAutoChangedAt ?? now;
+      if (now.difference(changedAt) < _autoSaveQuietWindow) {
+        return false;
+      }
+    }
+
     // 新建草稿仅包含默认标题时不立即落库，避免产生空笔记。
     if (_currentNoteId == null && _isInitialDraftDocument(state.document)) {
       return false;
     }
 
     _savingInFlight = true;
-    savingNotifier.value = true;
+    final showSavingIndicator = force;
+    if (showSavingIndicator) {
+      savingNotifier.value = true;
+    }
+    if (!force) {
+      autoSavingNotifier.value = true;
+    }
     errorNotifier.value = null;
     try {
       // 统一通过 syncEngine 落库，确保本地保存与同步日志路径一致。
@@ -174,6 +200,8 @@ class NoteEditorController {
       _expectedHeadRevision = outcome.note.headRevision;
       _createdDuringSession = _createdDuringSession || outcome.isNew;
       _lastSavedDocJson = snapshot.contentDocJson;
+      _pendingAutoDocJson = null;
+      _pendingAutoChangedAt = null;
       return true;
     } catch (e) {
       errorNotifier.value = e.toString();
@@ -181,7 +209,12 @@ class NoteEditorController {
       return false;
     } finally {
       _savingInFlight = false;
-      savingNotifier.value = false;
+      if (showSavingIndicator) {
+        savingNotifier.value = false;
+      }
+      if (!force) {
+        autoSavingNotifier.value = false;
+      }
     }
   }
 
@@ -289,6 +322,7 @@ class NoteEditorController {
     _editorState?.dispose();
     loadingNotifier.dispose();
     savingNotifier.dispose();
+    autoSavingNotifier.dispose();
     markdownNotifier.dispose();
     charCountNotifier.dispose();
     errorNotifier.dispose();
