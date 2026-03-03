@@ -8,6 +8,7 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
+import '../../core/utils/note_doc_codec.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
@@ -710,9 +711,9 @@ class _NoteCard extends StatelessWidget {
             ? note.title
             : note.displayTitleCache!;
     final previewText =
-        (note.previewTextCache ?? '').trim().isEmpty
-            ? note.contentMd
-            : note.previewTextCache!;
+        (note.previewTextCache ?? '').trim().isNotEmpty
+            ? note.previewTextCache!.trim()
+            : NoteDocCodec.extractPreviewText(note.contentMd).trim();
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -729,7 +730,7 @@ class _NoteCard extends StatelessWidget {
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -740,7 +741,7 @@ class _NoteCard extends StatelessWidget {
                         displayTitle,
                         style: Theme.of(
                           context,
-                        ).textTheme.titleMedium?.copyWith(fontSize: 17),
+                        ).textTheme.titleMedium?.copyWith(fontSize: 16),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -753,14 +754,17 @@ class _NoteCard extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  previewText,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 10),
+                if (previewText.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    previewText,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 8),
+                ] else
+                  const SizedBox(height: 4),
                 Row(
                   children: [
                     Text(

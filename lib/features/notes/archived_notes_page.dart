@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
+import '../../core/utils/note_doc_codec.dart';
 import '../../data/isar/collections/note_entity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
@@ -112,9 +113,9 @@ class _ArchivedNoteCard extends StatelessWidget {
             ? note.title
             : note.displayTitleCache!;
     final previewText =
-        (note.previewTextCache ?? '').trim().isEmpty
-            ? note.contentMd
-            : note.previewTextCache!;
+        (note.previewTextCache ?? '').trim().isNotEmpty
+            ? note.previewTextCache!.trim()
+            : NoteDocCodec.extractPreviewText(note.contentMd).trim();
     return SizedBox(
       width: double.infinity,
       child: IosFrostedPanel(
@@ -136,14 +137,17 @@ class _ArchivedNoteCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  previewText,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 9),
+                if (previewText.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    previewText,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 9),
+                ] else
+                  const SizedBox(height: 6),
                 Text(
                   formatter.format(note.updatedAt.toLocal()),
                   style: Theme.of(context).textTheme.bodySmall,
