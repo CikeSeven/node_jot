@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
+import '../../core/utils/app_log.dart';
+import '../../core/utils/note_doc_codec.dart';
 import '../../l10n/app_localizations.dart';
 import 'editor/note_editor_controller.dart';
 import 'editor/widgets/note_editor_preview.dart';
@@ -39,6 +42,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   /// 编辑页会话控制器，负责加载/保存/删除等业务操作。
   late final NoteEditorController _controller;
 
+  /// 编辑器快捷键集合（在默认快捷键基础上插入 Markdown 感知粘贴）。
+  late final List<CommandShortcutEvent> _commandShortcutEvents;
+
   /// 预览模式专用滚动控制器。
   ///
   /// 使用独立控制器可在“编辑/预览”切换时保留预览滚动位置。
@@ -64,6 +70,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       services: ref.read(appServicesProvider),
       initialNoteId: widget.noteId,
     );
+    _commandShortcutEvents = _buildCommandShortcutEvents();
     // 异步初始化：加载已有笔记或创建新笔记初始文档。
     unawaited(_controller.initialize());
   }
@@ -171,6 +178,80 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     );
   }
 
+  /// 组装编辑器命令快捷键。
+  ///
+  /// 处理策略：
+  /// - 先拦截 `Ctrl+V / Cmd+V`；
+  /// - 若剪贴板文本看起来像 Markdown，则转为结构化节点插入；
+  /// - 否则回退 AppFlowy 默认 `pasteCommand`。
+  List<CommandShortcutEvent> _buildCommandShortcutEvents() {
+    return [
+      CommandShortcutEvent(
+        key: 'nodejot_markdown_paste',
+        command: 'ctrl+v',
+        macOSCommand: 'cmd+v',
+        getDescription: () => 'NodeJot Markdown-aware paste',
+        handler: (editorState) {
+          // CommandShortcutEvent 的 handler 为同步回调，
+          // 粘贴板读取是异步操作，因此在此启动异步任务并标记事件已处理。
+          unawaited(_handleMarkdownAwarePaste(editorState));
+          return KeyEventResult.handled;
+        },
+      ),
+      ...standardCommandShortcutEvents,
+    ];
+  }
+
+  /// 处理 Markdown 感知粘贴。
+  ///
+  /// 说明：
+  /// - 若剪贴板为空、非 markdown 或解析失败，回退默认粘贴；
+  /// - 若解析成功，则将 markdown 转换后的块节点插入当前光标路径。
+  Future<void> _handleMarkdownAwarePaste(EditorState editorState) async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      final rawText = clipboardData?.text;
+      final text = rawText?.trim();
+      if (text == null || text.isEmpty) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      if (!NoteDocCodec.isLikelyMarkdownSource(text)) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      final selection = editorState.selection;
+      if (selection == null || selection.end.path.isEmpty) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      final document = markdownToDocument(text);
+      final nodes =
+          document.root.children.map((node) => node.copyWith()).toList();
+      if (nodes.isEmpty) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      final transaction = editorState.transaction;
+      transaction.insertNodes(selection.end.path, nodes);
+      transaction.afterSelection = Selection.single(
+        path: selection.end.path,
+        startOffset: 0,
+      );
+      await editorState.apply(transaction);
+    } catch (e) {
+      AppLog.e(
+        'note-editor',
+        'markdown paste failed, fallback to plain paste: $e',
+      );
+      pasteCommand.execute(editorState);
+    }
+  }
+
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     final l10n = context.l10n;
     final iconColor = Theme.of(
@@ -259,6 +340,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         editorState: state,
         autoFocus: true,
         editorStyle: editorStyle,
+        commandShortcutEvents: _commandShortcutEvents,
         shrinkWrap: false,
       ),
     );
@@ -270,11 +352,13 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   /// 确保亮暗模式下都有足够对比度。
   EditorStyle _buildEditorStyle(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
+    final textColor =
+        isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
     final secondaryColor =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
     final primaryColor = isDark ? const Color(0xFFBCA8FF) : AppColors.primary;
-    final linkColor = isDark ? const Color(0xFFCDBBFF) : AppColors.navActiveText;
+    final linkColor =
+        isDark ? const Color(0xFFCDBBFF) : AppColors.navActiveText;
     final codeBg =
         isDark
             ? AppColors.surfaceSoftDark.withValues(alpha: 0.72)
@@ -286,11 +370,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       dragHandleColor: primaryColor,
       selectionColor: primaryColor.withValues(alpha: isDark ? 0.34 : 0.22),
       textStyleConfiguration: TextStyleConfiguration(
-        text: TextStyle(
-          fontSize: 16,
-          height: 1.58,
-          color: textColor,
-        ),
+        text: TextStyle(fontSize: 16, height: 1.58, color: textColor),
         href: TextStyle(
           color: linkColor,
           decoration: TextDecoration.underline,

@@ -144,14 +144,6 @@ class NoteEditorController {
       return false;
     }
 
-    try {
-      // 对“被当纯文本的 markdown”进行一次轻量规范化，避免展示为原始文本。
-      await _normalizeMarkdownLikeContentIfNeeded(state);
-    } catch (e) {
-      errorNotifier.value = e.toString();
-      AppLog.e('note-editor', 'normalize markdown failed: $e');
-      return false;
-    }
     final snapshot = NoteDocCodec.fromDocument(state.document);
     markdownNotifier.value = snapshot.contentMd;
     charCountNotifier.value = _countCharacters(snapshot.contentMd);
@@ -254,7 +246,8 @@ class NoteEditorController {
       final isDefaultHeading =
           block.type == 'heading' &&
           level == 1 &&
-          (text == NoteDocCodec.defaultHeading || text.toLowerCase() == 'title');
+          (text == NoteDocCodec.defaultHeading ||
+              text.toLowerCase() == 'title');
       if (isDefaultHeading && !hasDefaultH1) {
         hasDefaultH1 = true;
         continue;
@@ -287,41 +280,6 @@ class NoteEditorController {
   int _countCharacters(String markdown) {
     // 按“非空白字符”统计，中文/emoji 等通过 runes 计数更稳妥。
     return markdown.replaceAll(RegExp(r'\s+'), '').runes.length;
-  }
-
-  /// 自动识别“纯文本 markdown”并转换为结构化块文档。
-  ///
-  /// 主要覆盖两类场景：
-  /// - 其他端同步来的 markdown 被当作普通段落；
-  /// - 用户一次性粘贴大段 markdown 原文。
-  Future<void> _normalizeMarkdownLikeContentIfNeeded(EditorState state) async {
-    try {
-      final normalized = NoteDocCodec.normalizeMarkdownLikePlainDocument(
-        state.document,
-        fallbackHeading: NoteDocCodec.defaultHeading,
-      );
-      if (normalized == null) {
-        return;
-      }
-
-      final transaction = state.transaction;
-      final existingNodes = state.document.root.children.toList(growable: false);
-      if (existingNodes.isNotEmpty) {
-        // 整体替换为解析后的结构化块，保证文档结构一致。
-        transaction.deleteNodes(existingNodes);
-      }
-      final nextNodes = normalized.root.children.map((node) => node.copyWith());
-      transaction.insertNodes(const [0], nextNodes);
-      transaction.afterSelection = Selection.single(path: [0], startOffset: 0);
-      await state.apply(
-        transaction,
-        // 这是系统级规范化，不应污染用户撤销栈。
-        options: const ApplyOptions(recordUndo: false),
-      );
-    } catch (e) {
-      AppLog.e('note-editor', 'normalize markdown exception: $e');
-      rethrow;
-    }
   }
 
   /// 释放资源。

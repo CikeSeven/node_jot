@@ -47,6 +47,15 @@ class NoteDocCodec {
     return _extractPreviewText(markdown);
   }
 
+  /// 判断给定文本是否“看起来像 markdown 源文本”。
+  ///
+  /// 该方法主要用于粘贴场景下的轻量识别：
+  /// - 命中标题/列表/引用/代码块等行级语法时返回 `true`；
+  /// - 未命中行级语法时，会结合行内语法做次级判断。
+  static bool isLikelyMarkdownSource(String source) {
+    return _isLikelyMarkdownSource(source);
+  }
+
   /// 兼容旧版字段（title + contentMd）并拼装为完整 markdown。
   ///
   /// 规则：
@@ -156,20 +165,14 @@ class NoteDocCodec {
       try {
         final raw = jsonDecode(contentDocJson);
         if (raw is Map<String, dynamic>) {
-          // 优先按结构化文档恢复，再做“markdown 纯文本块”规范化。
+          // 优先按结构化文档恢复。
           final document = _ensureEditableDocument(
             Document.fromJson(raw),
             fallbackHeading: normalizedHeading,
           );
-          final normalized =
-              normalizeMarkdownLikePlainDocument(
-                document,
-                fallbackHeading: normalizedHeading,
-              ) ??
-              document;
           // 旧版本可能写入了非 page/block 结构，直接回退到 markdown 兼容路径。
-          if (_looksLikeRenderableBlockDocument(normalized)) {
-            return normalized;
+          if (_looksLikeRenderableBlockDocument(document)) {
+            return document;
           }
         }
       } catch (_) {
@@ -185,10 +188,7 @@ class NoteDocCodec {
     return Document(
       root: Node(
         type: 'page',
-        children: [
-          headingNode(level: 1, text: normalized),
-          paragraphNode(),
-        ],
+        children: [headingNode(level: 1, text: normalized), paragraphNode()],
       ),
     );
   }
@@ -243,10 +243,11 @@ class NoteDocCodec {
     }
 
     final joined = filtered.join(' ');
-    final plain = joined
-        .replaceAll(RegExp(r'[*_`>#\-\[\]\(\)!]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    final plain =
+        joined
+            .replaceAll(RegExp(r'[*_`>#\-\[\]\(\)!]'), '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
     return plain;
   }
 
@@ -261,64 +262,6 @@ class NoteDocCodec {
       }
     }
     return true;
-  }
-
-  /// 将“markdown 原文纯文本”文档转换为结构化块文档。
-  ///
-  /// 返回 `null` 表示无需转换。
-  ///
-  /// 该方法用于修复以下场景：
-  /// - 跨端同步后 markdown 被当成普通段落文本；
-  /// - 粘贴大段 markdown 后文档仍是单段纯文本。
-  static Document? normalizeMarkdownLikePlainDocument(
-    Document document, {
-    String fallbackHeading = defaultHeading,
-  }) {
-    // 仅在特定结构下尝试转换，避免误判影响正常编辑内容。
-    final source = _extractNormalizationCandidate(document);
-    if (source == null) {
-      return null;
-    }
-
-    final trimmed = source.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    if (!_isLikelyMarkdownSource(trimmed)) {
-      return null;
-    }
-
-    // 解析失败直接放弃转换，不影响原文档。
-    final parsed = (() {
-      try {
-        return _ensureEditableDocument(
-          AppFlowyEditorMarkdownCodec().decode(trimmed),
-          fallbackHeading: fallbackHeading,
-        );
-      } catch (_) {
-        return null;
-      }
-    })();
-    if (parsed == null) {
-      return null;
-    }
-
-    // 安全保护：防止异常解析把大文本误降级为短内容（如只剩默认标题）。
-    final beforeLen = _documentTextLength(trimmed);
-    final afterLen = _documentTextLength(_documentMarkdownSource(parsed));
-    if (beforeLen >= 20 && afterLen < (beforeLen * 0.35)) {
-      return null;
-    }
-    if (afterLen == 0) {
-      return null;
-    }
-
-    final before = jsonEncode(document.toJson());
-    final after = jsonEncode(parsed.toJson());
-    if (before == after) {
-      return null;
-    }
-    return parsed;
   }
 
   static _DocumentSummary _summarizeDocument(Document document) {
@@ -357,8 +300,13 @@ class NoteDocCodec {
       bodyLines.add(text);
     }
 
-    final preview = bodyLines.take(4).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    return _DocumentSummary(title: title, preview: preview, bodyLines: bodyLines);
+    final preview =
+        bodyLines.take(4).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return _DocumentSummary(
+      title: title,
+      preview: preview,
+      bodyLines: bodyLines,
+    );
   }
 
   static String _nodePlainText(Node node) {
@@ -367,7 +315,12 @@ class NoteDocCodec {
 
     final delta = node.delta;
     if (delta != null) {
-      final text = delta.toPlainText().replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      final text =
+          delta
+              .toPlainText()
+              .replaceAll('\n', ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
       if (text.isNotEmpty) {
         parts.add(text);
       }
@@ -381,73 +334,6 @@ class NoteDocCodec {
     }
 
     return parts.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
-
-  static String _documentMarkdownSource(Document document) {
-    // 将当前文档粗略还原为“块间双换行”的 markdown 原始文本。
-    final blocks = <String>[];
-    for (final node in document.root.children) {
-      final text = _nodeRawText(node).trimRight();
-      if (text.isNotEmpty) {
-        blocks.add(text);
-      }
-    }
-    return blocks.join('\n\n');
-  }
-
-  static String? _extractNormalizationCandidate(Document document) {
-    final blocks = document.root.children;
-    if (blocks.isEmpty) {
-      return null;
-    }
-
-    // 场景 1：整个文档只有一个纯文本段落（常见于粘贴大段 markdown）。
-    if (blocks.length == 1 && _isParagraphOrText(blocks.first)) {
-      return _nodeRawText(blocks.first);
-    }
-
-    // 场景 2：模板文档“默认标题 + 正文段落”，正文为 markdown 原文。
-    if (blocks.length == 2 &&
-        _isSingleDefaultHeading(blocks.first) &&
-        _isParagraphOrText(blocks[1])) {
-      return _nodeRawText(blocks[1]);
-    }
-
-    return null;
-  }
-
-  static bool _isParagraphOrText(Node node) {
-    return node.type == 'paragraph' || node.type == 'text';
-  }
-
-  static bool _isSingleDefaultHeading(Node node) {
-    if (node.type != 'heading') {
-      return false;
-    }
-    final level = (node.attributes['level'] as num?)?.toInt() ?? 0;
-    if (level != 1) {
-      return false;
-    }
-    final text = _nodeRawText(node).replaceAll(RegExp(r'\s+'), ' ').trim();
-    return text == defaultHeading || text.toLowerCase() == 'title';
-  }
-
-  static String _nodeRawText(Node node) {
-    final parts = <String>[];
-    final delta = node.delta;
-    if (delta != null) {
-      final text = delta.toPlainText();
-      if (text.isNotEmpty) {
-        parts.add(text);
-      }
-    }
-    for (final child in node.children) {
-      final text = _nodeRawText(child);
-      if (text.isNotEmpty) {
-        parts.add(text);
-      }
-    }
-    return parts.join('\n');
   }
 
   static bool _isLikelyMarkdownSource(String source) {
@@ -491,11 +377,6 @@ class NoteDocCodec {
     return inlineHits >= 2;
   }
 
-  static int _documentTextLength(String source) {
-    // 用“去空白字符后的 rune 长度”做保守比较，降低语言差异影响。
-    return source.replaceAll(RegExp(r'\s+'), '').runes.length;
-  }
-
   static String _encodeMarkdownBestEffort({
     required Document document,
     required String fallbackTitle,
@@ -503,7 +384,8 @@ class NoteDocCodec {
   }) {
     // 优先走官方 codec，失败时再走手工回退，避免保存链路中断。
     try {
-      final markdown = AppFlowyEditorMarkdownCodec().encode(document).toString();
+      final markdown =
+          AppFlowyEditorMarkdownCodec().encode(document).toString();
       if (markdown.trim().isNotEmpty) {
         return markdown;
       }

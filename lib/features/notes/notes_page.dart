@@ -72,9 +72,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.selectedArchived(selectedIds.length))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.selectedArchived(selectedIds.length))),
+    );
   }
 
   Future<void> _deleteSelected(
@@ -91,7 +91,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       builder:
           (_) => AlertDialog(
             title: Text(l10n.delete),
-            content: Text(l10n.deleteSelectedConfirmMessage(selectedIds.length)),
+            content: Text(
+              l10n.deleteSelectedConfirmMessage(selectedIds.length),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -137,15 +139,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.selectedRestored(noteIds.length))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.selectedRestored(noteIds.length))),
+    );
   }
 
   void _openEditor([String? noteId]) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)),
+    );
   }
 
   Future<void> _archiveSingleNote({
@@ -157,9 +159,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.selectedArchived(1))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.selectedArchived(1))));
   }
 
   Future<void> _deleteSingleNoteWithUndo({
@@ -273,7 +275,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       return;
     }
     if (selected == _NoteContextAction.archive) {
-      await _archiveSingleNote(noteId: note.noteId, services: services, l10n: l10n);
+      await _archiveSingleNote(
+        noteId: note.noteId,
+        services: services,
+        l10n: l10n,
+      );
       return;
     }
     await _deleteSingleNoteWithUndo(
@@ -382,12 +388,14 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                               ),
                               IconButton(
                                 tooltip: l10n.archive,
-                                onPressed: () => _archiveSelected(services, l10n),
+                                onPressed:
+                                    () => _archiveSelected(services, l10n),
                                 icon: const Icon(CupertinoIcons.archivebox),
                               ),
                               IconButton(
                                 tooltip: l10n.delete,
-                                onPressed: () => _deleteSelected(services, l10n),
+                                onPressed:
+                                    () => _deleteSelected(services, l10n),
                                 icon: Icon(
                                   CupertinoIcons.delete,
                                   color: Theme.of(context).colorScheme.error,
@@ -399,7 +407,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                 onPressed:
                                     () => Navigator.of(context).push(
                                       MaterialPageRoute<void>(
-                                        builder: (_) => const ArchivedNotesPage(),
+                                        builder:
+                                            (_) => const ArchivedNotesPage(),
                                       ),
                                     ),
                                 icon: const Icon(CupertinoIcons.archivebox),
@@ -410,46 +419,54 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                       const SizedBox(height: AppSpacing.m),
                       Expanded(
                         child: ListView.separated(
-                      key: const PageStorageKey<String>('notes_list'),
-                      padding: EdgeInsets.only(bottom: listBottomOffset),
-                      itemCount: notes.isEmpty ? 2 : notes.length + 1,
-                      separatorBuilder: (context, index) {
-                        return SizedBox(height: index == 0 ? 8 : 10);
-                      },
+                          key: const PageStorageKey<String>('notes_list'),
+                          padding: EdgeInsets.only(bottom: listBottomOffset),
+                          itemCount: notes.isEmpty ? 2 : notes.length + 1,
+                          separatorBuilder: (context, index) {
+                            return SizedBox(height: index == 0 ? 8 : 10);
+                          },
                           itemBuilder: (context, index) {
-                        if (index == 0) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.l,
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    l10n.tabNotes,
-                                    style: Theme.of(context).textTheme.titleMedium,
-                                  ),
+                            if (index == 0) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.l,
                                 ),
-                                Text(
-                                  DateFormat('MMM d').format(DateTime.now()),
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        l10n.tabNotes,
+                                        style:
+                                            Theme.of(
+                                              context,
+                                            ).textTheme.titleMedium,
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat(
+                                        'MMM d',
+                                      ).format(DateTime.now()),
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          );
-                        }
+                              );
+                            }
 
-                        if (notes.isEmpty) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.l,
-                            ),
-                            child: _EmptyState(onCreate: _openEditor),
-                          );
-                        }
+                            if (notes.isEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.l,
+                                ),
+                                child: _EmptyState(onCreate: _openEditor),
+                              );
+                            }
 
-                        final note = notes[index - 1];
-                        final selected = _selectedNoteIds.contains(note.noteId);
+                            final note = notes[index - 1];
+                            final selected = _selectedNoteIds.contains(
+                              note.noteId,
+                            );
                             Widget card = Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: AppSpacing.l,
@@ -472,7 +489,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                               ),
                             );
 
-                            if (!_isSelectionMode && desktopContextMenuEnabled) {
+                            if (!_isSelectionMode &&
+                                desktopContextMenuEnabled) {
                               card = GestureDetector(
                                 behavior: HitTestBehavior.translucent,
                                 onSecondaryTapDown: (details) async {
