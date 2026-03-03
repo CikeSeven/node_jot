@@ -45,36 +45,42 @@ class NoteRepository {
 
   /// 监听未删除笔记（按更新时间倒序）。
   Stream<List<NoteEntity>> watchActiveNotes() {
-    return _db.noteEntitys
-        .where()
-        .filter()
-        .deletedAtIsNull()
-        .archivedAtIsNull()
-        .sortByUpdatedAtDesc()
-        .watch(fireImmediately: true);
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) {
+      return _db.noteEntitys
+          .where()
+          .filter()
+          .deletedAtIsNull()
+          .archivedAtIsNull()
+          .sortByUpdatedAtDesc()
+          .findAll();
+    });
   }
 
   /// 监听已归档且未删除的笔记（按更新时间倒序）。
   Stream<List<NoteEntity>> watchArchivedNotes() {
-    return _db.noteEntitys
-        .where()
-        .filter()
-        .deletedAtIsNull()
-        .archivedAtIsNotNull()
-        .sortByUpdatedAtDesc()
-        .watch(fireImmediately: true);
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) {
+      return _db.noteEntitys
+          .where()
+          .filter()
+          .deletedAtIsNull()
+          .archivedAtIsNotNull()
+          .sortByUpdatedAtDesc()
+          .findAll();
+    });
   }
 
   /// 监听冲突副本笔记。
   Stream<List<NoteEntity>> watchConflictNotes() {
-    return _db.noteEntitys
-        .where()
-        .filter()
-        .isConflictCopyEqualTo(true)
-        .deletedAtIsNull()
-        .archivedAtIsNull()
-        .sortByUpdatedAtDesc()
-        .watch(fireImmediately: true);
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) {
+      return _db.noteEntitys
+          .where()
+          .filter()
+          .isConflictCopyEqualTo(true)
+          .deletedAtIsNull()
+          .archivedAtIsNull()
+          .sortByUpdatedAtDesc()
+          .findAll();
+    });
   }
 
   /// 按业务 ID 查询笔记。

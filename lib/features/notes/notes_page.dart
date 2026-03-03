@@ -32,6 +32,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   static const Duration _deleteUndoSnackDuration = Duration(seconds: 4);
   static const Duration _restoreHintDuration = Duration(seconds: 2);
   final Set<String> _selectedNoteIds = <String>{};
+  final Set<String> _optimisticHiddenNoteIds = <String>{};
 
   bool get _isSelectionMode => _selectedNoteIds.isNotEmpty;
 
@@ -111,6 +112,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
 
     _clearSelection();
+    setState(() {
+      _optimisticHiddenNoteIds.addAll(selectedIds);
+    });
     for (final noteId in selectedIds) {
       await services.syncEngine.deleteLocalNote(noteId);
     }
@@ -123,6 +127,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       restoredMessage: l10n.selectedRestored(selectedIds.length),
       undoLabel: l10n.undo,
       onUndo: () async {
+        if (mounted) {
+          setState(() {
+            _optimisticHiddenNoteIds.removeAll(selectedIds);
+          });
+        }
         await _undoDeleteBatch(selectedIds, services, l10n);
       },
     );
@@ -139,6 +148,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (!mounted) {
       return;
     }
+    setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.selectedRestored(noteIds.length))),
     );
@@ -169,6 +179,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     required AppServices services,
     required AppLocalizations l10n,
   }) async {
+    setState(() {
+      _optimisticHiddenNoteIds.add(noteId);
+    });
     await services.syncEngine.deleteLocalNote(noteId);
     if (!mounted) {
       return;
@@ -178,6 +191,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       restoredMessage: l10n.selectedRestored(1),
       undoLabel: l10n.undo,
       onUndo: () async {
+        if (mounted) {
+          setState(() {
+            _optimisticHiddenNoteIds.remove(noteId);
+          });
+        }
         await services.syncEngine.restoreDeletedLocalNote(noteId);
       },
     );
@@ -205,6 +223,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               onPressed: () async {
                 messenger.hideCurrentSnackBar();
                 await onUndo();
+                if (mounted) {
+                  // 某些设备上 Isar 流在 restore 后不会立刻重建列表，
+                  // 这里主动触发一次页面重建，保证撤销后笔记立即可见。
+                  setState(() {});
+                }
                 messenger.showSnackBar(
                   SnackBar(
                     duration: _restoreHintDuration,
@@ -318,7 +341,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               ),
       body: PopScope(
         canPop: !_isSelectionMode,
-        onPopInvoked: (didPop) {
+        onPopInvokedWithResult: (didPop, result) {
           if (!didPop && _isSelectionMode) {
             _clearSelection();
           }
@@ -344,7 +367,26 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               child: StreamBuilder<List<NoteEntity>>(
                 stream: services.noteRepository.watchActiveNotes(),
                 builder: (context, snapshot) {
-                  final notes = snapshot.data ?? const <NoteEntity>[];
+                  // UI 侧再做一次兜底过滤，避免极端情况下 watch 流延迟导致的脏展示。
+                  final rawNotes = snapshot.data ?? const <NoteEntity>[];
+                  final activeIds =
+                      rawNotes
+                          .where(
+                            (note) =>
+                                note.deletedAt == null &&
+                                note.archivedAt == null,
+                          )
+                          .map((note) => note.noteId)
+                          .toSet();
+                  final notes =
+                      rawNotes
+                          .where(
+                            (note) =>
+                                note.deletedAt == null &&
+                                note.archivedAt == null &&
+                                !_optimisticHiddenNoteIds.contains(note.noteId),
+                          )
+                          .toList(growable: false);
                   final visibleIds = notes.map((e) => e.noteId).toSet();
                   if (_selectedNoteIds.any((id) => !visibleIds.contains(id))) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -354,6 +396,20 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                       setState(() {
                         _selectedNoteIds.removeWhere(
                           (id) => !visibleIds.contains(id),
+                        );
+                      });
+                    });
+                  }
+                  if (_optimisticHiddenNoteIds.any(
+                    (id) => !activeIds.contains(id),
+                  )) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) {
+                        return;
+                      }
+                      setState(() {
+                        _optimisticHiddenNoteIds.removeWhere(
+                          (id) => !activeIds.contains(id),
                         );
                       });
                     });

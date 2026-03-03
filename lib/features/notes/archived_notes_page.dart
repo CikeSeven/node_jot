@@ -37,7 +37,15 @@ class ArchivedNotesPage extends ConsumerWidget {
           child: StreamBuilder<List<NoteEntity>>(
             stream: services.noteRepository.watchArchivedNotes(),
             builder: (context, snapshot) {
-              final notes = snapshot.data ?? const <NoteEntity>[];
+              // UI 兜底过滤：确保仅展示“未删除且已归档”的笔记。
+              final rawNotes = snapshot.data ?? const <NoteEntity>[];
+              final notes =
+                  rawNotes
+                      .where(
+                        (note) =>
+                            note.deletedAt == null && note.archivedAt != null,
+                      )
+                      .toList(growable: false);
               if (notes.isEmpty) {
                 return Center(child: Text(l10n.noArchivedNotes));
               }
