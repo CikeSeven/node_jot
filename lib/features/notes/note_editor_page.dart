@@ -14,7 +14,6 @@ import '../../core/utils/app_log.dart';
 import '../../core/utils/note_doc_codec.dart';
 import '../../l10n/app_localizations.dart';
 import 'editor/note_editor_controller.dart';
-import 'editor/widgets/note_editor_preview.dart';
 import 'editor/widgets/note_editor_status_badge.dart';
 
 /// 笔记编辑页（AppFlowy 版本）。
@@ -22,7 +21,7 @@ import 'editor/widgets/note_editor_status_badge.dart';
 /// 设计原则：
 /// - 页面仅承担 UI 与交互编排；
 /// - 读写与会话生命周期交由 [NoteEditorController]；
-/// - 编辑/预览切换用 `IndexedStack`，以保留双方滚动状态。
+/// - 页面保持单一编辑模式，避免无用的视图切换状态。
 class NoteEditorPage extends ConsumerStatefulWidget {
   const NoteEditorPage({super.key, this.noteId});
 
@@ -44,14 +43,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
   /// 编辑器快捷键集合（在默认快捷键基础上插入 Markdown 感知粘贴）。
   late final List<CommandShortcutEvent> _commandShortcutEvents;
-
-  /// 预览模式专用滚动控制器。
-  ///
-  /// 使用独立控制器可在“编辑/预览”切换时保留预览滚动位置。
-  final ScrollController _previewScrollController = ScrollController();
-
-  /// 当前是否为预览模式（`false` = 编辑，`true` = 预览）。
-  bool _previewMode = false;
 
   /// 右下角状态卡片是否显示“已保存”文案。
   bool _showSavedHint = false;
@@ -77,9 +68,8 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
   @override
   void dispose() {
-    // 释放页面层资源，防止计时器与滚动控制器泄漏。
+    // 释放页面层资源，防止计时器泄漏。
     _savedHintTimer?.cancel();
-    _previewScrollController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -308,20 +298,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         icon: const Icon(CupertinoIcons.chevron_back),
       ),
       actions: [
-        // 编辑/预览切换按钮：
-        // 使用同一份文档状态，通过 UI 视图切换来保留上下文。
-        IconButton(
-          tooltip: _previewMode ? l10n.editorMode : l10n.previewMode,
-          onPressed: () {
-            setState(() {
-              _previewMode = !_previewMode;
-            });
-          },
-          icon: Icon(
-            _previewMode ? CupertinoIcons.pencil : CupertinoIcons.eye,
-            color: iconColor,
-          ),
-        ),
         // 手动保存按钮：
         // 保存中显示小转圈，避免重复点击触发并发保存。
         ValueListenableBuilder<bool>(
@@ -361,17 +337,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_previewMode) {
-      // 预览态：读取控制器中的 markdown 快照并可滚动查看。
-      return NoteEditorPreview(
-        markdownListenable: _controller.markdownNotifier,
-        scrollController: _previewScrollController,
-      );
-    }
-
     final editorStyle = _buildEditorStyle(context);
 
-    // 编辑态：渲染 AppFlowyEditor，并套用 NodeJot 主题样式。
+    // 单一编辑态：渲染 AppFlowyEditor，并套用 NodeJot 主题样式。
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.l,
