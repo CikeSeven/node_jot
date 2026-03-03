@@ -17,7 +17,10 @@ class NoteEditorPreview extends StatelessWidget {
     required this.scrollController,
   });
 
+  /// 来自编辑控制器的 markdown 文本监听器。
   final ValueListenable<String> markdownListenable;
+
+  /// 预览滚动控制器（用于保留切换前后的滚动位置）。
   final ScrollController scrollController;
 
   @override
@@ -26,6 +29,7 @@ class NoteEditorPreview extends StatelessWidget {
       valueListenable: markdownListenable,
       builder: (context, markdown, _) {
         return SingleChildScrollView(
+          // 保留底部额外空间，避免与悬浮状态卡片视觉重叠。
           controller: scrollController,
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.l,
@@ -37,6 +41,8 @@ class NoteEditorPreview extends StatelessWidget {
             radius: 20,
             padding: const EdgeInsets.all(16),
             child: SelectableText(
+              // 预览层当前为“纯文本可选择”模式，便于复制与调试；
+              // 后续若接入富文本 markdown 渲染，可在此处替换组件。
               markdown,
               style: Theme.of(
                 context,
