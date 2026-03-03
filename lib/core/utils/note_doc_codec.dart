@@ -56,7 +56,10 @@ class NoteDocCodec {
   }
 
   static NoteDocSnapshot fromMarkdown(String markdown) {
-    final document = AppFlowyEditorMarkdownCodec().decode(markdown);
+    final document = _ensureEditableDocument(
+      AppFlowyEditorMarkdownCodec().decode(markdown),
+      fallbackHeading: defaultHeading,
+    );
     return fromDocument(document);
   }
 
@@ -82,7 +85,10 @@ class NoteDocCodec {
     try {
       final raw = jsonDecode(docJson);
       if (raw is Map<String, dynamic>) {
-        final document = Document.fromJson(raw);
+        final document = _ensureEditableDocument(
+          Document.fromJson(raw),
+          fallbackHeading: fallbackTitle ?? defaultHeading,
+        );
         return fromDocument(document);
       }
     } catch (_) {
@@ -105,26 +111,60 @@ class NoteDocCodec {
     String? fallbackMarkdown,
     String? fallbackTitle,
   }) {
+    final normalizedHeading =
+        (fallbackTitle ?? '').trim().isEmpty
+            ? defaultHeading
+            : fallbackTitle!.trim();
+    final fallback =
+        fallbackMarkdown ?? buildNewNoteMarkdown(heading: normalizedHeading);
+    final fallbackDocument = _ensureEditableDocument(
+      AppFlowyEditorMarkdownCodec().decode(fallback),
+      fallbackHeading: normalizedHeading,
+    );
+
     if (contentDocJson != null && contentDocJson.trim().isNotEmpty) {
       try {
         final raw = jsonDecode(contentDocJson);
         if (raw is Map<String, dynamic>) {
-          return Document.fromJson(raw);
+          final document = _ensureEditableDocument(
+            Document.fromJson(raw),
+            fallbackHeading: normalizedHeading,
+          );
+          final markdown = AppFlowyEditorMarkdownCodec().encode(document).toString().trim();
+          // 旧数据中可能存在“可反序列化但不可渲染”的文档，空渲染时回退到 Markdown。
+          if (markdown.isNotEmpty) {
+            return document;
+          }
         }
       } catch (_) {
         // ignore and fallback to markdown.
       }
     }
+    return fallbackDocument;
+  }
 
-    final markdown =
-        fallbackMarkdown ??
-        buildNewNoteMarkdown(
-          heading:
-              (fallbackTitle ?? '').trim().isEmpty
-                  ? defaultHeading
-                  : fallbackTitle!.trim(),
-        );
-    return AppFlowyEditorMarkdownCodec().decode(markdown);
+  /// 构造一个“标题 + 正文段落”的初始文档，保证编辑器必有可编辑节点。
+  static Document buildInitialDocument({String heading = defaultHeading}) {
+    final normalized = heading.trim().isEmpty ? defaultHeading : heading.trim();
+    return Document(
+      root: Node(
+        type: 'page',
+        children: [
+          headingNode(level: 1, text: normalized),
+          paragraphNode(),
+        ],
+      ),
+    );
+  }
+
+  static Document _ensureEditableDocument(
+    Document document, {
+    required String fallbackHeading,
+  }) {
+    if (document.root.children.isNotEmpty) {
+      return document;
+    }
+    return buildInitialDocument(heading: fallbackHeading);
   }
 
   static String _extractDisplayTitle(String markdown) {

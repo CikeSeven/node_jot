@@ -5,11 +5,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../l10n/app_localizations.dart';
-import '../../ui/widgets/ios_frosted_panel.dart';
 import 'editor/note_editor_controller.dart';
 import 'editor/widgets/note_editor_preview.dart';
 import 'editor/widgets/note_editor_status_badge.dart';
@@ -203,30 +203,42 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    if (_previewMode) {
+      return NoteEditorPreview(
+        markdownListenable: _controller.markdownNotifier,
+        scrollController: _previewScrollController,
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final editorStyle = EditorStyle.mobile(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      cursorColor:
+          isDark ? AppColors.textPrimaryDark : const Color(0xFF00BCF0),
+      selectionColor:
+          isDark
+              ? const Color.fromARGB(80, 122, 162, 255)
+              : const Color.fromARGB(53, 111, 201, 231),
+      textStyleConfiguration: TextStyleConfiguration(
+        text: TextStyle(
+          fontSize: 16,
+          color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+        ),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.m,
+        AppSpacing.l,
         AppSpacing.s,
-        AppSpacing.m,
+        AppSpacing.l,
         AppSpacing.m,
       ),
-      child: IndexedStack(
-        index: _previewMode ? 1 : 0,
-        children: [
-          IosFrostedPanel(
-            radius: 20,
-            padding: EdgeInsets.zero,
-            child: AppFlowyEditor(
-              editorState: state,
-              autoFocus: true,
-              shrinkWrap: false,
-            ),
-          ),
-          NoteEditorPreview(
-            markdownListenable: _controller.markdownNotifier,
-            scrollController: _previewScrollController,
-          ),
-        ],
+      child: AppFlowyEditor(
+        editorState: state,
+        autoFocus: true,
+        editorStyle: editorStyle,
+        shrinkWrap: false,
       ),
     );
   }

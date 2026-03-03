@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:appflowy_editor/appflowy_editor.dart';
 
 import '../core/models/app_services.dart';
 import '../l10n/app_localizations.dart';
@@ -19,6 +20,8 @@ class NodeJotApp extends ConsumerWidget {
     return ValueListenableBuilder<Locale>(
       valueListenable: services.localeService.localeNotifier,
       builder: (context, locale, _) {
+        final effectiveLocale =
+            locale.languageCode == 'zh' ? const Locale('zh', 'CN') : locale;
         return ValueListenableBuilder<ThemeMode>(
           valueListenable: services.themeService.themeModeNotifier,
           builder: (context, themeMode, _) {
@@ -28,13 +31,18 @@ class NodeJotApp extends ConsumerWidget {
               theme: AppTheme.light(),
               darkTheme: AppTheme.dark(),
               themeMode: themeMode,
-              locale: locale,
-              supportedLocales: AppLocalizations.supportedLocales,
+              locale: effectiveLocale,
+              supportedLocales: const [
+                Locale('en'),
+                Locale('zh'),
+                Locale('zh', 'CN'),
+              ],
               localizationsDelegates: const [
                 AppLocalizations.delegate,
                 GlobalMaterialLocalizations.delegate,
                 GlobalCupertinoLocalizations.delegate,
                 GlobalWidgetsLocalizations.delegate,
+                AppFlowyEditorLocalizations.delegate,
               ],
               home: const HomeShellPage(),
             );

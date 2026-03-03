@@ -35,6 +35,7 @@ class NoteEditorController {
   String? _currentNoteId;
   int? _expectedHeadRevision;
   bool _createdDuringSession = false;
+  String? _initialDraftDocJson;
   String _lastSavedDocJson = '';
   bool _disposed = false;
   bool _savingInFlight = false;
@@ -55,25 +56,25 @@ class NoteEditorController {
               ? null
               : await services.noteRepository.getByNoteId(initialNoteId!);
 
-      final initialMarkdown =
+      final document =
           existing == null
-              ? NoteDocCodec.buildNewNoteMarkdown()
-              : NoteDocCodec.buildMarkdownFromLegacy(
-                title: existing.title,
-                contentMd: existing.contentMd,
+              ? NoteDocCodec.buildInitialDocument()
+              : NoteDocCodec.decodeDocument(
+                contentDocJson: existing.contentDocJson,
+                fallbackMarkdown: NoteDocCodec.buildMarkdownFromLegacy(
+                  title: existing.title,
+                  contentMd: existing.contentMd,
+                ),
+                fallbackTitle: existing.title,
               );
-
-      final document = NoteDocCodec.decodeDocument(
-        contentDocJson: existing?.contentDocJson,
-        fallbackMarkdown: initialMarkdown,
-        fallbackTitle: existing?.title,
-      );
-
       _editorState = EditorState(document: document);
       _currentNoteId = existing?.noteId;
       _expectedHeadRevision = existing?.headRevision;
 
-      final snapshot = NoteDocCodec.fromDocument(document);
+      final snapshot = NoteDocCodec.fromDocument(_editorState!.document);
+      if (existing == null) {
+        _initialDraftDocJson = snapshot.contentDocJson;
+      }
       markdownNotifier.value = snapshot.contentMd;
       charCountNotifier.value = _countCharacters(snapshot.contentMd);
       _lastSavedDocJson = existing == null ? '' : snapshot.contentDocJson;
@@ -118,7 +119,7 @@ class NoteEditorController {
     }
 
     // 新建草稿仅包含默认标题时不立即落库，避免产生空笔记。
-    if (_currentNoteId == null && !_shouldPersistNewDraft(snapshot.contentMd)) {
+    if (_currentNoteId == null && _isInitialDraft(snapshot.contentDocJson)) {
       return false;
     }
 
@@ -152,14 +153,20 @@ class NoteEditorController {
   /// 2) 若为本次新建且最终为空，则自动删除该笔记。
   Future<void> onLeavingEditor() async {
     await saveIfNeeded();
-    if (!_createdDuringSession || _currentNoteId == null) {
+    final noteId = _currentNoteId;
+    if (!_createdDuringSession || noteId == null) {
       return;
     }
-    final markdown = markdownNotifier.value;
-    if (_shouldPersistNewDraft(markdown)) {
+
+    final state = _editorState;
+    if (state == null) {
       return;
     }
-    await services.syncEngine.deleteLocalNote(_currentNoteId!);
+    final currentSnapshot = NoteDocCodec.fromDocument(state.document);
+    if (!_isInitialDraft(currentSnapshot.contentDocJson)) {
+      return;
+    }
+    await services.syncEngine.deleteLocalNote(noteId);
   }
 
   /// 删除当前笔记。
@@ -180,29 +187,13 @@ class NoteEditorController {
     await services.syncEngine.restoreDeletedLocalNote(noteId);
   }
 
-  /// 判断新建草稿是否已经包含“有效内容”。
-  ///
-  /// 规则：
-  /// - 只有默认标题（`# 标题` / `# Title`）视为空；
-  /// - 其他任意正文或非默认标题均视为有效内容。
-  bool _shouldPersistNewDraft(String markdown) {
-    final normalized =
-        markdown
-            .split('\n')
-            .map((line) => line.trim())
-            .where((line) => line.isNotEmpty)
-            .toList();
-    if (normalized.isEmpty) {
+  /// 新建草稿是否仍处于初始模板状态（用于保存/退出删除判定）。
+  bool _isInitialDraft(String docJson) {
+    final initial = _initialDraftDocJson;
+    if (initial == null) {
       return false;
     }
-
-    if (normalized.length == 1 && normalized.first.startsWith('# ')) {
-      final heading = normalized.first.substring(2).trim();
-      final lower = heading.toLowerCase();
-      return heading.isNotEmpty && heading != '标题' && lower != 'title';
-    }
-
-    return true;
+    return docJson == initial;
   }
 
   int _countCharacters(String markdown) {
