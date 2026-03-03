@@ -73,8 +73,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.selectedArchived(selectedIds.length))),
+    _showFloatingSnackBar(
+      message: l10n.selectedArchived(selectedIds.length),
     );
   }
 
@@ -149,8 +149,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       return;
     }
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.selectedRestored(noteIds.length))),
+    _showFloatingSnackBar(
+      message: l10n.selectedRestored(noteIds.length),
     );
   }
 
@@ -169,9 +169,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.selectedArchived(1))));
+    _showFloatingSnackBar(message: l10n.selectedArchived(1));
   }
 
   Future<void> _deleteSingleNoteWithUndo({
@@ -212,9 +210,12 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
     final messenger = ScaffoldMessenger.of(context);
     final undoColor = Theme.of(context).colorScheme.primary;
+    final bottomMargin = _snackBottomMargin();
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, bottomMargin),
         duration: _deleteUndoSnackDuration,
         content: Row(
           children: [
@@ -230,6 +231,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 }
                 messenger.showSnackBar(
                   SnackBar(
+                    behavior: SnackBarBehavior.floating,
+                    margin: EdgeInsets.fromLTRB(
+                      AppSpacing.l,
+                      0,
+                      AppSpacing.l,
+                      bottomMargin,
+                    ),
                     duration: _restoreHintDuration,
                     content: Text(restoredMessage),
                   ),
@@ -245,6 +253,42 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 计算 SnackBar 距离底部的抬升量，确保显示在底部导航栏之上。
+  double _snackBottomMargin() {
+    final platform = Theme.of(context).platform;
+    final useSideRail =
+        platform == TargetPlatform.windows || platform == TargetPlatform.macOS;
+    if (useSideRail) {
+      return 16 + MediaQuery.paddingOf(context).bottom;
+    }
+    // 手机端底栏高度约 76 + 安全区与呼吸间距，额外加一点避免视觉贴边。
+    return 104 + MediaQuery.paddingOf(context).bottom;
+  }
+
+  void _showFloatingSnackBar({
+    required String message,
+    Duration? duration,
+  }) {
+    if (!mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(
+          AppSpacing.l,
+          0,
+          AppSpacing.l,
+          _snackBottomMargin(),
+        ),
+        duration: duration ?? const Duration(seconds: 2),
+        content: Text(message),
       ),
     );
   }
@@ -329,44 +373,36 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         useSideRail ? 16.0 : 112 + MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
-      floatingActionButton:
-          _isSelectionMode
-              ? null
-              : Padding(
-                padding: EdgeInsets.only(bottom: fabBottomOffset),
-                child: FloatingActionButton(
-                  onPressed: _openEditor,
-                  child: const Icon(CupertinoIcons.add),
+      body: Stack(
+        children: [
+          PopScope(
+            canPop: !_isSelectionMode,
+            onPopInvokedWithResult: (didPop, result) {
+              if (!didPop && _isSelectionMode) {
+                _clearSelection();
+              }
+            },
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: (node, event) {
+                if (event is! KeyDownEvent) {
+                  return KeyEventResult.ignored;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.escape &&
+                    _isSelectionMode) {
+                  _clearSelection();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: AppTheme.pageBackground(Theme.of(context).brightness),
                 ),
-              ),
-      body: PopScope(
-        canPop: !_isSelectionMode,
-        onPopInvokedWithResult: (didPop, result) {
-          if (!didPop && _isSelectionMode) {
-            _clearSelection();
-          }
-        },
-        child: Focus(
-          autofocus: true,
-          onKeyEvent: (node, event) {
-            if (event is! KeyDownEvent) {
-              return KeyEventResult.ignored;
-            }
-            if (event.logicalKey == LogicalKeyboardKey.escape &&
-                _isSelectionMode) {
-              _clearSelection();
-              return KeyEventResult.handled;
-            }
-            return KeyEventResult.ignored;
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: AppTheme.pageBackground(Theme.of(context).brightness),
-            ),
-            child: SafeArea(
-              child: StreamBuilder<List<NoteEntity>>(
-                stream: services.noteRepository.watchActiveNotes(),
-                builder: (context, snapshot) {
+                child: SafeArea(
+                  child: StreamBuilder<List<NoteEntity>>(
+                    stream: services.noteRepository.watchActiveNotes(),
+                    builder: (context, snapshot) {
                   // UI 侧再做一次兜底过滤，避免极端情况下 watch 流延迟导致的脏展示。
                   final rawNotes = snapshot.data ?? const <NoteEntity>[];
                   final activeIds =
@@ -579,8 +615,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                   note.noteId,
                                 );
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(l10n.noteArchived)),
+                                  _showFloatingSnackBar(
+                                    message: l10n.noteArchived,
                                   );
                                 }
                               },
@@ -592,10 +628,21 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     ],
                   );
                 },
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+          if (!_isSelectionMode)
+            Positioned(
+              right: AppSpacing.l,
+              bottom: fabBottomOffset,
+              child: FloatingActionButton(
+                onPressed: _openEditor,
+                child: const Icon(CupertinoIcons.add),
+              ),
+            ),
+        ],
       ),
     );
   }
