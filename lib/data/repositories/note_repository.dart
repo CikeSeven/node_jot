@@ -505,7 +505,11 @@ class NoteRepository {
 
     final markdown = note.contentMd.trim();
     final looksLikeDefaultHeadingOnly =
-        markdown == '# 标题' || markdown == '# 标题\n' || markdown == '# Title';
+        markdown == '# 标题' ||
+        markdown == '# 标题\n' ||
+        markdown == '# 未命名笔记' ||
+        markdown == '# 未命名笔记\n' ||
+        markdown == '# Title';
     if (markdown.isNotEmpty && !looksLikeDefaultHeadingOnly) {
       note
         ..displayTitleCache = NoteDocCodec.extractDisplayTitle(note.contentMd)

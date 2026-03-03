@@ -63,6 +63,7 @@ class NoteEditorController {
 
   /// 标记本次会话是否创建了新笔记（用于离页空草稿清理）。
   bool _createdDuringSession = false;
+  bool _openedWithExistingNote = false;
 
   /// 最近一次成功保存的文档 JSON 快照。
   ///
@@ -82,6 +83,7 @@ class NoteEditorController {
 
   /// 当前会话对应的笔记 ID。
   String? get currentNoteId => _currentNoteId;
+  bool get isEditingExistingNote => _openedWithExistingNote;
 
   /// 初始化编辑会话。
   Future<void> initialize() async {
@@ -111,6 +113,7 @@ class NoteEditorController {
       _editorState = EditorState(document: document);
       _currentNoteId = existing?.noteId;
       _expectedHeadRevision = existing?.headRevision;
+      _openedWithExistingNote = existing != null;
 
       // 3) 初始化预览与统计状态。
       final snapshot = NoteDocCodec.fromDocument(_editorState!.document);
@@ -174,8 +177,8 @@ class NoteEditorController {
       }
     }
 
-    // 新建草稿仅包含默认标题时不立即落库，避免产生空笔记。
-    if (_currentNoteId == null && _isInitialDraftDocument(state.document)) {
+    // 新建笔记若被完全清空，则不落库。
+    if (_currentNoteId == null && _isDocumentEffectivelyEmpty(state.document)) {
       return false;
     }
 
@@ -220,25 +223,23 @@ class NoteEditorController {
 
   /// 页面退出前调用：
   /// 1) 尝试保存最后一次修改；
-  /// 2) 若为本次新建且最终为空，则自动删除该笔记。
+  /// 2) 若为本次新建且最终为空，则自动删除该笔记（若已落库）。
   Future<void> onLeavingEditor() async {
-    // 离页前先做一次兜底保存，降低“最后一次输入丢失”的概率。
-    await saveIfNeeded();
-    final noteId = _currentNoteId;
-    if (!_createdDuringSession || noteId == null) {
-      return;
-    }
-
     final state = _editorState;
     if (state == null) {
       return;
     }
-    if (!_isInitialDraftDocument(state.document)) {
+
+    if (_isDocumentEffectivelyEmpty(state.document)) {
+      final noteId = _currentNoteId;
+      if (_createdDuringSession && noteId != null) {
+        await services.syncEngine.deleteLocalNote(noteId);
+      }
       return;
     }
 
-    // 仅对“本次新建且仍是空草稿”的笔记执行自动删除。
-    await services.syncEngine.deleteLocalNote(noteId);
+    // 离页前做一次强制保存，确保最后输入不会被防抖窗口吞掉。
+    await saveNow();
   }
 
   /// 删除当前笔记。
@@ -259,36 +260,24 @@ class NoteEditorController {
     await services.syncEngine.restoreDeletedLocalNote(noteId);
   }
 
-  /// 新建草稿是否仍处于初始模板状态（仅含默认 H1 标题且无正文）。
-  bool _isInitialDraftDocument(Document document) {
-    final blocks = document.root.children;
-    if (blocks.isEmpty) {
+  /// 当前文档是否已被用户清空（所有块文本均为空白）。
+  bool isCurrentDocumentEmpty() {
+    final state = _editorState;
+    if (state == null) {
       return true;
     }
+    return _isDocumentEffectivelyEmpty(state.document);
+  }
 
-    var hasDefaultH1 = false;
-    for (final block in blocks) {
-      // 统一压缩空白后比较，避免换行/多空格影响判断。
+  bool _isDocumentEffectivelyEmpty(Document document) {
+    for (final block in document.root.children) {
       final text =
-          _extractBlockText(block).replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (text.isEmpty) {
-        continue;
+          _extractBlockText(block).replaceAll(RegExp(r'\s+'), '').trim();
+      if (text.isNotEmpty) {
+        return false;
       }
-
-      final level = (block.attributes['level'] as num?)?.toInt();
-      final isDefaultHeading =
-          block.type == 'heading' &&
-          level == 1 &&
-          (text == NoteDocCodec.defaultHeading ||
-              text.toLowerCase() == 'title');
-      if (isDefaultHeading && !hasDefaultH1) {
-        hasDefaultH1 = true;
-        continue;
-      }
-      return false;
     }
-
-    return hasDefaultH1;
+    return true;
   }
 
   String _extractBlockText(Node node) {

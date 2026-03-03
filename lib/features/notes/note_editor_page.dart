@@ -77,18 +77,50 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   /// 统一处理返回动作。
   ///
   /// 返回前会触发一次“离开编辑器”流程：
-  /// - 尝试保存最后编辑结果；
-  /// - 若是本次新建且最终为空草稿，自动删除。
+  /// - 新建笔记：有内容则保存；被清空则不保存（已落库则自动删除）；
+  /// - 已有笔记：若被清空，先二次确认再删除。
   Future<void> _handleBack() async {
     if (_isClosing) {
       return;
     }
     _isClosing = true;
-    await _controller.onLeavingEditor();
-    if (!mounted) {
-      return;
+    try {
+      final l10n = context.l10n;
+      final contentEmpty = _controller.isCurrentDocumentEmpty();
+      if (contentEmpty && _controller.isEditingExistingNote) {
+        final confirmedDelete = await showDialog<bool>(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: Text(l10n.deleteNoteTitle),
+                content: Text(l10n.clearContentWillDeleteConfirmMessage),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text(l10n.cancel),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: Text(l10n.delete),
+                  ),
+                ],
+              ),
+        );
+        if (confirmedDelete != true) {
+          return;
+        }
+        await _controller.deleteCurrentNote();
+      } else {
+        await _controller.onLeavingEditor();
+      }
+
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+    } finally {
+      _isClosing = false;
     }
-    Navigator.of(context).pop();
   }
 
   Future<void> _handleManualSave() async {

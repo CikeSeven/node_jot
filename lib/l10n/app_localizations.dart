@@ -68,6 +68,10 @@ class AppLocalizations {
       _isZh
           ? '确定删除这条笔记吗？此操作无法撤销。'
           : 'Delete this note? This action cannot be undone.';
+  String get clearContentWillDeleteConfirmMessage =>
+      _isZh
+          ? '此操作会删除笔记，是否继续？'
+          : 'This action will delete the note. Continue?';
   String get conflictCopyCreated =>
       _isZh
           ? '检测到冲突，已创建冲突副本。'
