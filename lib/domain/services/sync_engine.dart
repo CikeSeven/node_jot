@@ -285,16 +285,14 @@ class SyncEngine {
   /// 保存本地笔记并写入本地操作日志。
   Future<SaveNoteOutcome> saveLocalNote({
     String? noteId,
-    required String title,
-    required String contentMd,
+    required String contentDocJson,
     int? expectedHeadRevision,
     SaveTriggerSource source = SaveTriggerSource.localUser,
   }) async {
     final profile = _localDeviceService.profile;
     final outcome = await _noteRepository.saveLocalNote(
       noteId: noteId,
-      title: title,
-      contentMd: contentMd,
+      contentDocJson: contentDocJson,
       editorDeviceId: profile.deviceId,
       expectedHeadRevision: expectedHeadRevision,
     );
@@ -1372,6 +1370,14 @@ class SyncEngine {
         headRevision: payload['headRevision'] as int,
       );
     } else {
+      final schema = (op.payload['schemaVersion'] as int?) ?? 1;
+      if (schema < 2) {
+        AppLog.w(
+          'sync-engine',
+          'skip op ${op.opId}: unsupported note schema version $schema',
+        );
+        return false;
+      }
       final outcome = await _noteRepository.applyRemoteSnapshot(op.payload);
       if (outcome.hasInlineConflict) {
         AppLog.w(

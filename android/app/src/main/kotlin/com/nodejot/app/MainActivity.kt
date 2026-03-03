@@ -1,9 +1,9 @@
-package com.example.node_jot
+package com.nodejot.app
 
 import android.content.Context
 import android.net.wifi.WifiManager
-import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
@@ -29,6 +29,7 @@ class MainActivity : FlutterActivity() {
                             result.error("LOCK_ACQUIRE_FAILED", e.message, null)
                         }
                     }
+
                     "releaseMulticastLock" -> {
                         try {
                             multicastLock?.let {
@@ -41,6 +42,7 @@ class MainActivity : FlutterActivity() {
                             result.error("LOCK_RELEASE_FAILED", e.message, null)
                         }
                     }
+
                     else -> result.notImplemented()
                 }
             }

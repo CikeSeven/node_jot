@@ -1,22 +1,27 @@
 import 'dart:async';
 
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
+import '../../app/theme/app_spacing.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
+import '../../core/utils/app_log.dart';
+import '../../core/utils/note_doc_codec.dart';
 import '../../l10n/app_localizations.dart';
-import '../../ui/widgets/ios_frosted_panel.dart';
+import 'editor/note_editor_controller.dart';
+import 'editor/widgets/note_editor_status_badge.dart';
 
-/// 编辑器显示模式。
-enum _EditorViewMode { edit, preview }
-
-/// 笔记编辑页。
+/// 笔记编辑页（AppFlowy 版本）。
 ///
-/// 支持创建、编辑、保存、软删除与 Markdown 预览。
+/// 设计原则：
+/// - 页面仅承担 UI 与交互编排；
+/// - 读写与会话生命周期交由 [NoteEditorController]；
+/// - 页面保持单一编辑模式，避免无用的视图切换状态。
 class NoteEditorPage extends ConsumerStatefulWidget {
   const NoteEditorPage({super.key, this.noteId});
 
@@ -27,672 +32,424 @@ class NoteEditorPage extends ConsumerStatefulWidget {
 }
 
 class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
-  static const _autosaveDelay = Duration(milliseconds: 300);
-  static const _savedHintHold = Duration(seconds: 3);
-  static const _deleteUndoSnackDuration = Duration(seconds: 4);
-  static const _restoreHintDuration = Duration(seconds: 2);
+  /// “已保存”提示的停留时长。
+  static const Duration _savedHintDuration = Duration(seconds: 3);
 
-  final _titleController = TextEditingController();
-  final _contentController = TextEditingController();
-  final _editScrollController = ScrollController();
-  final _previewScrollController = ScrollController();
+  /// 删除后支持撤销的有效时长（对应 SnackBar duration）。
+  static const Duration _deleteUndoDuration = Duration(seconds: 4);
 
-  Timer? _autosaveTimer;
+  /// 编辑页会话控制器，负责加载/保存/删除等业务操作。
+  late final NoteEditorController _controller;
+
+  /// 编辑器快捷键集合（在默认快捷键基础上插入 Markdown 感知粘贴）。
+  late final List<CommandShortcutEvent> _commandShortcutEvents;
+
+  /// 右下角状态卡片是否显示“已保存”文案。
+  bool _showSavedHint = false;
+
+  /// 防止重复触发返回逻辑（例如系统返回与按钮返回同时触发）。
+  bool _isClosing = false;
+
+  /// 控制“已保存”提示自动收起的计时器。
   Timer? _savedHintTimer;
-
-  bool _loading = true;
-  bool _isSaving = false;
-  bool _hasPendingSave = false;
-  bool _isBootstrapping = true;
-  bool _muteDraftListener = false;
-  bool _showSavedHintInBadge = false;
-  bool _previewScrollInitialized = false;
-  int? _expectedHeadRevision;
-  String? _activeNoteId;
-  String _lastSavedNormalizedTitle = '';
-  String _lastSavedContent = '';
-  _EditorViewMode _viewMode = _EditorViewMode.edit;
-
-  bool get _isNewNoteSession => widget.noteId == null;
 
   @override
   void initState() {
     super.initState();
-    _activeNoteId = widget.noteId;
-    _titleController.addListener(_onDraftChanged);
-    _contentController.addListener(_onDraftChanged);
-    _load();
-  }
-
-  /// 根据 noteId 加载已有笔记内容；新建时预填“标题N”。
-  Future<void> _load() async {
-    final services = ref.read(appServicesProvider);
-
-    if (_activeNoteId == null) {
-      final nextTitleIndex = await services.noteRepository.getNextAutoTitleIndex();
-      _setDraftSilently(title: '标题$nextTitleIndex', content: '');
-      _lastSavedNormalizedTitle = _normalizedTitle(_titleController.text);
-      _lastSavedContent = _contentController.text;
-      _isBootstrapping = false;
-      setState(() => _loading = false);
-      return;
-    }
-
-    final note = await services.noteRepository.getByNoteId(_activeNoteId!);
-    if (note != null) {
-      _setDraftSilently(title: note.title, content: note.contentMd);
-      _expectedHeadRevision = note.headRevision;
-    }
-    _lastSavedNormalizedTitle = _normalizedTitle(_titleController.text);
-    _lastSavedContent = _contentController.text;
-    _isBootstrapping = false;
-    if (mounted) {
-      setState(() => _loading = false);
-    }
-  }
-
-  void _setDraftSilently({String? title, String? content}) {
-    _muteDraftListener = true;
-    if (title != null) {
-      _titleController.text = title;
-    }
-    if (content != null) {
-      _contentController.text = content;
-    }
-    _muteDraftListener = false;
-  }
-
-  String _normalizedTitle(String input) {
-    final trimmed = input.trim();
-    return trimmed.isEmpty ? 'Untitled' : trimmed;
-  }
-
-  bool _hasUnsavedChanges() {
-    return _normalizedTitle(_titleController.text) != _lastSavedNormalizedTitle ||
-        _contentController.text != _lastSavedContent;
-  }
-
-  int get _contentCharCount => _contentController.text.characters.length;
-
-  void _onDraftChanged() {
-    if (_loading || _isBootstrapping || _muteDraftListener) {
-      return;
-    }
-    if (mounted) {
-      setState(() {});
-    }
-    _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(_autosaveDelay, () {
-      unawaited(_saveDraft());
-    });
-  }
-
-  Future<void> _saveDraft() async {
-    if (_loading || _isBootstrapping || !_hasUnsavedChanges()) {
-      return;
-    }
-    if (_isSaving) {
-      _hasPendingSave = true;
-      return;
-    }
-
-    _isSaving = true;
-    final services = ref.read(appServicesProvider);
-    try {
-      final result = await services.syncEngine.saveLocalNote(
-        noteId: _activeNoteId,
-        title: _titleController.text,
-        contentMd: _contentController.text,
-        expectedHeadRevision: _expectedHeadRevision,
-      );
-      _activeNoteId = result.note.noteId;
-      _expectedHeadRevision = result.note.headRevision;
-      _lastSavedNormalizedTitle = _normalizedTitle(result.note.title);
-      _lastSavedContent = result.note.contentMd;
-      if (result.hasInlineConflict && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.inlineConflictInserted)),
-        );
-      }
-    } catch (_) {
-      // 自动保存失败时静默等待下一次输入重试，避免频繁打断用户编辑。
-    } finally {
-      _isSaving = false;
-      if (_hasPendingSave) {
-        _hasPendingSave = false;
-        await _saveDraft();
-      }
-    }
-  }
-
-  Future<void> _flushAutosave() async {
-    _autosaveTimer?.cancel();
-    _autosaveTimer = null;
-    await _saveDraft();
-  }
-
-  Future<void> _cleanupNewNoteOnExit() async {
-    if (!_isNewNoteSession) {
-      return;
-    }
-    final noteId = _activeNoteId;
-    if (noteId == null) {
-      return;
-    }
-    if (_contentController.text.trim().isNotEmpty) {
-      return;
-    }
-
-    final services = ref.read(appServicesProvider);
-    try {
-      await services.syncEngine.deleteLocalNote(noteId);
-      _activeNoteId = null;
-      _expectedHeadRevision = null;
-    } catch (_) {
-      // 退出清理失败不阻断返回流程。
-    }
-  }
-
-  Future<bool> _onWillPop() async {
-    await _flushAutosave();
-    await _cleanupNewNoteOnExit();
-    return true;
-  }
-
-  void _switchViewMode(_EditorViewMode mode) {
-    if (_viewMode == mode) {
-      return;
-    }
-    if (mode == _EditorViewMode.preview) {
-      FocusScope.of(context).unfocus();
-    }
-    setState(() {
-      _viewMode = mode;
-    });
-
-    if (mode == _EditorViewMode.preview && !_previewScrollInitialized) {
-      _previewScrollInitialized = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _syncPreviewScrollFromEdit();
-      });
-    }
-  }
-
-  /// 首次进入预览时按滚动比例对齐，避免从顶部突变。
-  void _syncPreviewScrollFromEdit() {
-    if (!mounted) {
-      return;
-    }
-    if (!_editScrollController.hasClients || !_previewScrollController.hasClients) {
-      return;
-    }
-    final editMax = _editScrollController.position.maxScrollExtent;
-    final ratio =
-        editMax <= 0
-            ? 0.0
-            : (_editScrollController.offset / editMax).clamp(0.0, 1.0).toDouble();
-    final previewMax = _previewScrollController.position.maxScrollExtent;
-    final target = (previewMax * ratio).clamp(0.0, previewMax).toDouble();
-    _previewScrollController.jumpTo(target);
+    // 通过 Provider 读取全局服务并创建编辑会话控制器。
+    _controller = NoteEditorController(
+      services: ref.read(appServicesProvider),
+      initialNoteId: widget.noteId,
+    );
+    _commandShortcutEvents = _buildCommandShortcutEvents();
+    // 异步初始化：加载已有笔记或创建新笔记初始文档。
+    unawaited(_controller.initialize());
   }
 
   @override
   void dispose() {
-    _autosaveTimer?.cancel();
+    // 释放页面层资源，防止计时器泄漏。
     _savedHintTimer?.cancel();
-    _titleController.removeListener(_onDraftChanged);
-    _contentController.removeListener(_onDraftChanged);
-    _titleController.dispose();
-    _contentController.dispose();
-    _editScrollController.dispose();
-    _previewScrollController.dispose();
+    _controller.dispose();
     super.dispose();
+  }
+
+  /// 统一处理返回动作。
+  ///
+  /// 返回前会触发一次“离开编辑器”流程：
+  /// - 尝试保存最后编辑结果；
+  /// - 若是本次新建且最终为空草稿，自动删除。
+  Future<void> _handleBack() async {
+    if (_isClosing) {
+      return;
+    }
+    _isClosing = true;
+    await _controller.onLeavingEditor();
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _handleManualSave() async {
+    // 手动保存后短暂展示“已保存”反馈，不打断编辑流程。
+    await _controller.saveNow();
+    if (!mounted) {
+      return;
+    }
+    _savedHintTimer?.cancel();
+    setState(() {
+      _showSavedHint = true;
+    });
+    _savedHintTimer = Timer(_savedHintDuration, () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _showSavedHint = false;
+      });
+    });
+  }
+
+  Future<void> _handleDelete() async {
+    final l10n = context.l10n;
+    final deletedText = l10n.selectedDeleted(1);
+    final undoText = l10n.undo;
+    // 新建未落库场景：无 noteId 时直接关闭页面。
+    final noteId = _controller.currentNoteId;
+    if (noteId == null) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    // 二次确认，避免误删。
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            title: Text(l10n.deleteNoteTitle),
+            content: Text(l10n.deleteNoteConfirmMessage),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton.tonal(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(l10n.delete),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    // 删除成功后立刻退出编辑页，并提供撤销入口。
+    final messenger = ScaffoldMessenger.of(context);
+    await _controller.deleteCurrentNote();
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: _deleteUndoDuration,
+        content: Text(deletedText),
+        action: SnackBarAction(
+          label: undoText,
+          onPressed: () {
+            unawaited(_controller.restoreDeletedCurrentNote());
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 组装编辑器命令快捷键。
+  ///
+  /// 处理策略：
+  /// - 先拦截 `Ctrl+V / Cmd+V`；
+  /// - 若剪贴板文本看起来像 Markdown，则转为结构化节点插入；
+  /// - 否则回退 AppFlowy 默认 `pasteCommand`。
+  List<CommandShortcutEvent> _buildCommandShortcutEvents() {
+    // 移除默认粘贴命令，避免与自定义粘贴逻辑并行执行。
+    final commands =
+        standardCommandShortcutEvents
+            .where(
+              (event) =>
+                  event.key != pasteCommand.key &&
+                  event.key != pasteTextWithoutFormattingCommand.key,
+            )
+            .toList(growable: true);
+
+    // 自定义 markdown-aware paste：
+    // - 电脑端 Ctrl/Cmd+V
+    // - 移动端系统粘贴意图（映射到同一 paste command key）
+    final markdownAwarePaste = CommandShortcutEvent(
+      key: pasteCommand.key,
+      command: 'ctrl+v',
+      macOSCommand: 'cmd+v',
+      linuxCommand: 'ctrl+v',
+      getDescription: () => 'NodeJot Markdown-aware paste',
+      handler: (editorState) {
+        // CommandShortcutEvent 的 handler 为同步回调，
+        // 粘贴板读取是异步操作，因此在此启动异步任务并标记事件已处理。
+        unawaited(_handleMarkdownAwarePaste(editorState));
+        return KeyEventResult.handled;
+      },
+    );
+
+    // “粘贴为纯文本”快捷键也路由到同一逻辑：
+    // - markdown 文本仍尝试结构化；
+    // - 非 markdown 回退默认纯文本粘贴。
+    final markdownAwarePasteWithoutFormatting = CommandShortcutEvent(
+      key: pasteTextWithoutFormattingCommand.key,
+      command: 'ctrl+shift+v',
+      macOSCommand: 'cmd+shift+v',
+      linuxCommand: 'ctrl+shift+v',
+      getDescription: () => 'NodeJot Markdown-aware paste without formatting',
+      handler: (editorState) {
+        unawaited(_handleMarkdownAwarePaste(editorState));
+        return KeyEventResult.handled;
+      },
+    );
+
+    commands.insert(0, markdownAwarePasteWithoutFormatting);
+    commands.insert(0, markdownAwarePaste);
+    return commands;
+  }
+
+  /// 处理 Markdown 感知粘贴。
+  ///
+  /// 说明：
+  /// - 若剪贴板为空、非 markdown 或解析失败，回退默认粘贴；
+  /// - 若解析成功，则将 markdown 转换后的块节点插入当前光标路径。
+  Future<void> _handleMarkdownAwarePaste(EditorState editorState) async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      final rawText = clipboardData?.text;
+      final text = rawText?.trim();
+      if (text == null || text.isEmpty) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      if (!NoteDocCodec.isLikelyMarkdownSource(text)) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      final selection = editorState.selection;
+      if (selection == null || selection.end.path.isEmpty) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      final document = markdownToDocument(text);
+      final nodes =
+          document.root.children.map((node) => node.copyWith()).toList();
+      if (nodes.isEmpty) {
+        pasteCommand.execute(editorState);
+        return;
+      }
+
+      // 选择路径在移动端可能指向行内节点，不能直接用于“插入块”。
+      // 这里统一转换为顶层块路径：在当前块后插入。
+      final blockCount = editorState.document.root.children.length;
+      final currentBlockIndex =
+          selection.end.path.isEmpty ? 0 : selection.end.path.first;
+      final clampedBlockIndex =
+          currentBlockIndex < 0
+              ? 0
+              : (currentBlockIndex >= blockCount
+                  ? (blockCount == 0 ? 0 : blockCount - 1)
+                  : currentBlockIndex);
+      final insertBlockIndex = blockCount == 0 ? 0 : clampedBlockIndex + 1;
+
+      final transaction = editorState.transaction;
+      transaction.insertNodes([insertBlockIndex], nodes);
+      transaction.afterSelection = Selection.single(
+        path: [insertBlockIndex],
+        startOffset: 0,
+      );
+      await editorState.apply(transaction);
+    } catch (e) {
+      AppLog.e(
+        'note-editor',
+        'markdown paste failed, fallback to plain paste: $e',
+      );
+      pasteCommand.execute(editorState);
+    }
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    final l10n = context.l10n;
+    final iconColor = Theme.of(
+      context,
+    ).colorScheme.primary.withValues(alpha: 0.82);
+    return AppBar(
+      title: Text(l10n.editNote),
+      leading: IconButton(
+        tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+        onPressed: _handleBack,
+        icon: const Icon(CupertinoIcons.chevron_back),
+      ),
+      actions: [
+        // 手动保存按钮：
+        // 保存中显示小转圈，避免重复点击触发并发保存。
+        ValueListenableBuilder<bool>(
+          valueListenable: _controller.savingNotifier,
+          builder: (context, saving, _) {
+            return IconButton(
+              tooltip: l10n.save,
+              onPressed: saving ? null : _handleManualSave,
+              icon:
+                  saving
+                      ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.0),
+                      )
+                      : Icon(Icons.save_outlined, color: iconColor),
+            );
+          },
+        ),
+        // 删除按钮（危险操作，使用 error 语义色）。
+        IconButton(
+          tooltip: l10n.delete,
+          onPressed: _handleDelete,
+          icon: Icon(
+            CupertinoIcons.delete,
+            color: Theme.of(context).colorScheme.error,
+          ),
+        ),
+        const SizedBox(width: 6),
+      ],
+    );
+  }
+
+  Widget _buildEditorContent(BuildContext context) {
+    final state = _controller.editorState;
+    if (state == null) {
+      // 初始化期间 editorState 为空，展示加载占位。
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final editorStyle = _buildEditorStyle(context);
+
+    // 单一编辑态：渲染 AppFlowyEditor，并套用 NodeJot 主题样式。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.l,
+        AppSpacing.s,
+        AppSpacing.l,
+        AppSpacing.m,
+      ),
+      child: AppFlowyEditor(
+        editorState: state,
+        autoFocus: true,
+        editorStyle: editorStyle,
+        commandShortcutEvents: _commandShortcutEvents,
+        shrinkWrap: false,
+      ),
+    );
+  }
+
+  /// 构建与 NodeJot 主题一致的 AppFlowy 编辑器配色。
+  ///
+  /// 包含正文、链接、代码样式、自动补全、光标、选区与拖拽手柄，
+  /// 确保亮暗模式下都有足够对比度。
+  EditorStyle _buildEditorStyle(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor =
+        isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
+    final secondaryColor =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final primaryColor = isDark ? const Color(0xFFBCA8FF) : AppColors.primary;
+    final linkColor =
+        isDark ? const Color(0xFFCDBBFF) : AppColors.navActiveText;
+    final codeBg =
+        isDark
+            ? AppColors.surfaceSoftDark.withValues(alpha: 0.72)
+            : AppColors.primarySoft.withValues(alpha: 0.82);
+
+    return EditorStyle.mobile(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      cursorColor: primaryColor,
+      dragHandleColor: primaryColor,
+      selectionColor: primaryColor.withValues(alpha: isDark ? 0.34 : 0.22),
+      textStyleConfiguration: TextStyleConfiguration(
+        text: TextStyle(fontSize: 16, height: 1.58, color: textColor),
+        href: TextStyle(
+          color: linkColor,
+          decoration: TextDecoration.underline,
+          decorationColor: linkColor.withValues(alpha: 0.8),
+        ),
+        code: TextStyle(
+          color: isDark ? const Color(0xFFD9CCFF) : const Color(0xFF6D37D2),
+          backgroundColor: codeBg,
+          fontFamily: 'monospace',
+        ),
+        autoComplete: TextStyle(color: secondaryColor),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final title = _isNewNoteSession ? l10n.newNote : l10n.editNote;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope<void>(
+      // 自定义返回流程，确保先执行保存/清理，再 pop 页面。
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          unawaited(_handleBack());
+        }
+      },
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: SizedBox(
-                width: 150,
-                child: CupertinoSlidingSegmentedControl<_EditorViewMode>(
-                  groupValue: _viewMode,
-                  thumbColor: colorScheme.primary.withValues(alpha: 0.22),
-                  backgroundColor: colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.38,
-                  ),
-                  children: {
-                    _EditorViewMode.edit: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(l10n.editorMode),
-                    ),
-                    _EditorViewMode.preview: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(l10n.previewMode),
-                    ),
-                  },
-                  onValueChanged: (value) {
-                    if (value != null) {
-                      _switchViewMode(value);
-                    }
-                  },
-                ),
-              ),
-            ),
-            IconButton(
-              style: ButtonStyle(
-                foregroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
-                  if (states.contains(WidgetState.disabled)) {
-                    return colorScheme.onSurface.withValues(alpha: 0.38);
-                  }
-                  return colorScheme.primary.withValues(alpha: 0.78);
-                }),
-              ),
-              onPressed: _isSaving ? null : _saveNow,
-              icon: const Icon(Icons.save_outlined),
-              tooltip: l10n.save,
-            ),
-            if (!_isNewNoteSession)
-              IconButton(
-                onPressed: _isSaving ? null : _confirmAndDeleteNote,
-                icon: Icon(
-                  CupertinoIcons.trash,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                tooltip: l10n.delete,
-              ),
-            const SizedBox(width: 4),
-          ],
-        ),
+        appBar: _buildAppBar(context),
         body: Container(
           decoration: BoxDecoration(
             gradient: AppTheme.pageBackground(Theme.of(context).brightness),
           ),
-          child:
-              _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : SafeArea(
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child:
-                                _viewMode == _EditorViewMode.edit
-                                    ? _buildEditBody()
-                                    : _buildPreviewBody(),
-                          ),
-                        ),
-                        Positioned(
-                          right: 16,
-                          bottom: 16,
-                          child: IgnorePointer(
-                            child: IosFrostedPanel(
-                              radius: 14,
-                              blur: 14,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              child: AnimatedSize(
-                                duration: const Duration(milliseconds: 260),
-                                curve: Curves.easeOutCubic,
-                                alignment: Alignment.centerRight,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    AnimatedSwitcher(
-                                      duration: const Duration(
-                                        milliseconds: 220,
-                                      ),
-                                      switchInCurve: Curves.easeOutCubic,
-                                      switchOutCurve: Curves.easeInCubic,
-                                      transitionBuilder: (child, animation) {
-                                        return SizeTransition(
-                                          sizeFactor: animation,
-                                          axis: Axis.horizontal,
-                                          axisAlignment: 1,
-                                          child: FadeTransition(
-                                            opacity: animation,
-                                            child: child,
-                                          ),
-                                        );
-                                      },
-                                      child:
-                                          _showSavedHintInBadge
-                                              ? Padding(
-                                                key: const ValueKey<String>(
-                                                  'saved',
-                                                ),
-                                                padding: const EdgeInsets.only(
-                                                  right: 6,
-                                                ),
-                                                child: Text(
-                                                  l10n.saved,
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color:
-                                                            AppColors.textPrimary,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
-                                                ),
-                                              )
-                                              : const SizedBox.shrink(
-                                                key: ValueKey<String>('empty'),
-                                              ),
-                                    ),
-                                    Text(
-                                      l10n.charCountLabel(_contentCharCount),
-                                      style: Theme.of(context).textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: AppColors.textPrimary,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+          child: SafeArea(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _controller.loadingNotifier,
+              builder: (context, loading, _) {
+                if (loading) {
+                  // 初始加载阶段统一展示全屏 loading。
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                return Stack(
+                  children: [
+                    // 主体编辑区域（编辑器或预览）。
+                    Positioned.fill(child: _buildEditorContent(context)),
+                    // 右下角悬浮状态卡片（字数/已保存）。
+                    Positioned(
+                      right: AppSpacing.l,
+                      bottom:
+                          AppSpacing.l + MediaQuery.paddingOf(context).bottom,
+                      child: ValueListenableBuilder<int>(
+                        valueListenable: _controller.charCountNotifier,
+                        builder: (context, count, _) {
+                          return NoteEditorStatusBadge(
+                            savedLabel: l10n.saved,
+                            countLabel: l10n.charCountLabel(count),
+                            showSavedHint: _showSavedHint,
+                          );
+                        },
+                      ),
                     ),
-                  ),
-        ),
-      ),
-    );
-  }
-
-  /// 编辑模式 UI：标题输入 + 正文输入。
-  Widget _buildEditBody() {
-    final l10n = context.l10n;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const titleAreaEstimate = 72.0;
-        final contentMinHeight =
-            (constraints.maxHeight - titleAreaEstimate)
-                .clamp(140.0, double.infinity)
-                .toDouble();
-
-        return ListView(
-          controller: _editScrollController,
-          padding: const EdgeInsets.only(top: 6, bottom: 72),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-          children: [
-            TextField(
-              controller: _titleController,
-              maxLines: 1,
-              textInputAction: TextInputAction.next,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontSize: 34,
-                letterSpacing: -0.8,
-              ),
-              decoration: InputDecoration(
-                hintText: l10n.titleHint,
-                filled: false,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
+                  ],
+                );
+              },
             ),
-            const Divider(height: 1, thickness: 1),
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: contentMinHeight),
-              child: TextField(
-                controller: _contentController,
-                maxLines: null,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: InputDecoration(
-                  hintText: l10n.markdownHint,
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.only(top: 12),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// 预览模式 UI：标题文本 + Markdown 渲染内容。
-  Widget _buildPreviewBody() {
-    final l10n = context.l10n;
-    final title = _titleController.text.trim();
-    final content = _contentController.text;
-    final showEmptyHint = content.trim().isEmpty;
-
-    return ListView(
-      controller: _previewScrollController,
-      padding: const EdgeInsets.only(top: 6, bottom: 72),
-      children: [
-        if (title.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontSize: 34, letterSpacing: -0.8),
-            ),
-          ),
-        const Divider(height: 1, thickness: 1),
-        if (showEmptyHint)
-          Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Text(
-              l10n.markdownHint,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: MarkdownBody(
-              data: content,
-              styleSheet: _buildMarkdownStyle(context),
-              selectable: true,
-            ),
-          ),
-      ],
-    );
-  }
-
-  MarkdownStyleSheet _buildMarkdownStyle(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return MarkdownStyleSheet.fromTheme(theme).copyWith(
-      p: theme.textTheme.bodyLarge?.copyWith(height: 1.62),
-      h1: theme.textTheme.headlineMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.4,
-      ),
-      h2: theme.textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.25,
-      ),
-      h3: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-      blockquote: theme.textTheme.bodyMedium?.copyWith(
-        color: AppColors.textSecondary,
-      ),
-      blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      blockquoteDecoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.36),
-        borderRadius: BorderRadius.circular(10),
-        border: Border(
-          left: BorderSide(
-            color: colorScheme.primary.withValues(alpha: 0.45),
-            width: 3,
-          ),
-        ),
-      ),
-      code: theme.textTheme.bodyMedium?.copyWith(
-        fontFamily: 'monospace',
-        backgroundColor: colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.68,
-        ),
-      ),
-      codeblockPadding: const EdgeInsets.all(12),
-      codeblockDecoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      listBullet: theme.textTheme.bodyLarge,
-      horizontalRuleDecoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _saveNow() async {
-    await _flushAutosave();
-    if (!mounted) {
-      return;
-    }
-    _savedHintTimer?.cancel();
-    setState(() {
-      _showSavedHintInBadge = true;
-    });
-    _savedHintTimer = Timer(_savedHintHold, () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _showSavedHintInBadge = false;
-      });
-    });
-  }
-
-  Future<void> _confirmAndDeleteNote() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final l10n = dialogContext.l10n;
-        return AlertDialog(
-          title: Text(l10n.deleteNoteTitle),
-          content: Text(l10n.deleteNoteConfirmMessage),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(l10n.cancel),
-            ),
-            FilledButton.tonal(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(l10n.delete),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-    await _deleteNote();
-  }
-
-  /// 软删除当前笔记。
-  Future<void> _deleteNote() async {
-    final id = _activeNoteId;
-    if (id == null) {
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    final services = ref.read(appServicesProvider);
-    final messenger = ScaffoldMessenger.of(context);
-    final l10n = context.l10n;
-    final deletedMessage = l10n.selectedDeleted(1);
-    final restoredMessage = l10n.selectedRestored(1);
-    final undoLabel = l10n.undo;
-    final undoColor = Theme.of(context).colorScheme.primary;
-    try {
-      await services.syncEngine.deleteLocalNote(id);
-      _activeNoteId = null;
-      _expectedHeadRevision = null;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(
-          duration: _deleteUndoSnackDuration,
-          content: Row(
-            children: [
-              Expanded(child: Text(deletedMessage)),
-              TextButton(
-                onPressed: () async {
-                  messenger.hideCurrentSnackBar();
-                  await services.syncEngine.restoreDeletedLocalNote(id);
-                  messenger.showSnackBar(
-                    SnackBar(
-                      duration: _restoreHintDuration,
-                      content: Text(restoredMessage),
-                    ),
-                  );
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: undoColor,
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(40, 28),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(undoLabel),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          duration: _restoreHintDuration,
-          content: Text(l10n.deleteFailedWithReason(e.toString())),
-        ),
-      );
-      setState(() => _isSaving = false);
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
   }
 }

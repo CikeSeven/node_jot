@@ -69,6 +69,7 @@ class AppServices {
     final isarService = await IsarService.open();
 
     final noteRepository = NoteRepository(isarService.db);
+    await noteRepository.migrateLegacyNotesToDocJson();
     final deviceRepository = DeviceRepository(isarService.db);
     final opLogRepository = OpLogRepository(isarService.db);
     final syncCursorRepository = SyncCursorRepository(isarService.db);

@@ -37,7 +37,15 @@ class ArchivedNotesPage extends ConsumerWidget {
           child: StreamBuilder<List<NoteEntity>>(
             stream: services.noteRepository.watchArchivedNotes(),
             builder: (context, snapshot) {
-              final notes = snapshot.data ?? const <NoteEntity>[];
+              // UI 兜底过滤：确保仅展示“未删除且已归档”的笔记。
+              final rawNotes = snapshot.data ?? const <NoteEntity>[];
+              final notes =
+                  rawNotes
+                      .where(
+                        (note) =>
+                            note.deletedAt == null && note.archivedAt != null,
+                      )
+                      .toList(growable: false);
               if (notes.isEmpty) {
                 return Center(child: Text(l10n.noArchivedNotes));
               }
@@ -99,6 +107,14 @@ class _ArchivedNoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final formatter = DateFormat('yyyy-MM-dd HH:mm');
+    final displayTitle =
+        (note.displayTitleCache ?? '').trim().isEmpty
+            ? note.title
+            : note.displayTitleCache!;
+    final previewText =
+        (note.previewTextCache ?? '').trim().isEmpty
+            ? note.contentMd
+            : note.previewTextCache!;
     return SizedBox(
       width: double.infinity,
       child: IosFrostedPanel(
@@ -113,7 +129,7 @@ class _ArchivedNoteCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  note.title,
+                  displayTitle,
                   style: Theme.of(
                     context,
                   ).textTheme.titleMedium?.copyWith(fontSize: 17),
@@ -122,7 +138,7 @@ class _ArchivedNoteCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  note.contentMd,
+                  previewText,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium,

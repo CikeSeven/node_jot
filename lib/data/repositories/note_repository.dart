@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:isar/isar.dart';
 
 import '../../core/utils/id.dart';
+import '../../core/utils/note_doc_codec.dart';
 import '../isar/collections/note_entity.dart';
+import '../isar/collections/op_log_entity.dart';
 
 /// 本地保存笔记后的结果。
 class SaveNoteOutcome {
@@ -40,40 +42,45 @@ class NoteRepository {
   NoteRepository(this._db);
 
   final Isar _db;
-  static final RegExp _autoTitlePattern = RegExp(r'^标题(\d+)$');
 
   /// 监听未删除笔记（按更新时间倒序）。
   Stream<List<NoteEntity>> watchActiveNotes() {
-    return _db.noteEntitys
-        .where()
-        .filter()
-        .deletedAtIsNull()
-        .archivedAtIsNull()
-        .sortByUpdatedAtDesc()
-        .watch(fireImmediately: true);
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) {
+      return _db.noteEntitys
+          .where()
+          .filter()
+          .deletedAtIsNull()
+          .archivedAtIsNull()
+          .sortByUpdatedAtDesc()
+          .findAll();
+    });
   }
 
   /// 监听已归档且未删除的笔记（按更新时间倒序）。
   Stream<List<NoteEntity>> watchArchivedNotes() {
-    return _db.noteEntitys
-        .where()
-        .filter()
-        .deletedAtIsNull()
-        .archivedAtIsNotNull()
-        .sortByUpdatedAtDesc()
-        .watch(fireImmediately: true);
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) {
+      return _db.noteEntitys
+          .where()
+          .filter()
+          .deletedAtIsNull()
+          .archivedAtIsNotNull()
+          .sortByUpdatedAtDesc()
+          .findAll();
+    });
   }
 
   /// 监听冲突副本笔记。
   Stream<List<NoteEntity>> watchConflictNotes() {
-    return _db.noteEntitys
-        .where()
-        .filter()
-        .isConflictCopyEqualTo(true)
-        .deletedAtIsNull()
-        .archivedAtIsNull()
-        .sortByUpdatedAtDesc()
-        .watch(fireImmediately: true);
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) {
+      return _db.noteEntitys
+          .where()
+          .filter()
+          .isConflictCopyEqualTo(true)
+          .deletedAtIsNull()
+          .archivedAtIsNull()
+          .sortByUpdatedAtDesc()
+          .findAll();
+    });
   }
 
   /// 按业务 ID 查询笔记。
@@ -81,44 +88,34 @@ class NoteRepository {
     return _db.noteEntitys.where().noteIdEqualTo(noteId).findFirst();
   }
 
-  /// 获取新建笔记默认标题的下一个序号。
-  ///
-  /// 规则：扫描未删除笔记中形如“标题N”的标题，返回最大 N + 1。
-  /// 若不存在匹配项，则返回 1。
-  Future<int> getNextAutoTitleIndex() async {
-    final notes =
-        await _db.noteEntitys.where().filter().deletedAtIsNull().findAll();
-    var maxIndex = 0;
-
-    for (final note in notes) {
-      final match = _autoTitlePattern.firstMatch(note.title.trim());
-      if (match == null) {
+  /// 迁移旧版 `title + contentMd` 到 `contentDocJson` 主存储。
+  Future<void> migrateLegacyNotesToDocJson() async {
+    final allNotes = await _db.noteEntitys.where().findAll();
+    for (final note in allNotes) {
+      final changed = await _migrateSingleNote(note);
+      if (!changed) {
         continue;
       }
-      final value = int.tryParse(match.group(1) ?? '');
-      if (value != null && value > maxIndex) {
-        maxIndex = value;
-      }
+      await _db.writeTxn(() async {
+        await _db.noteEntitys.put(note);
+      });
     }
-
-    return maxIndex + 1;
   }
 
   /// 保存本地编辑。
   ///
   /// - 新笔记：创建 `headRevision=1`；
   /// - 旧笔记：正常快进 revision；
-  /// - revision 不匹配：写入 Git 风格内联冲突块，避免覆盖现有内容。
+  /// - revision 不匹配：保留当前笔记并创建冲突副本。
   Future<SaveNoteOutcome> saveLocalNote({
-    required String title,
-    required String contentMd,
+    required String contentDocJson,
     required String editorDeviceId,
     String? noteId,
     int? expectedHeadRevision,
   }) async {
-    final normalizedTitle = title.trim().isEmpty ? 'Untitled' : title.trim();
     final now = DateTime.now().toUtc();
     final wantedNoteId = noteId ?? newUuid();
+    final incomingDoc = NoteDocCodec.fromDocJson(docJson: contentDocJson);
 
     late SaveNoteOutcome outcome;
 
@@ -130,8 +127,6 @@ class NoteRepository {
         final note =
             NoteEntity()
               ..noteId = wantedNoteId
-              ..title = normalizedTitle
-              ..contentMd = contentMd
               ..updatedAt = now
               ..deletedAt = null
               ..archivedAt = null
@@ -140,6 +135,7 @@ class NoteRepository {
               ..headRevision = 1
               ..isConflictCopy = false
               ..originNoteId = null;
+        _applyDocSnapshotToNote(note, incomingDoc);
         await _db.noteEntitys.put(note);
         outcome = SaveNoteOutcome(
           note: note,
@@ -150,47 +146,46 @@ class NoteRepository {
         return;
       }
 
+      var createdConflictCopy = false;
       if (expectedHeadRevision != null &&
           existing.headRevision != expectedHeadRevision) {
-        existing
-          ..title = normalizedTitle
-          ..contentMd = _buildGitConflictContent(
-            localContent: _stripOuterConflictMarkers(existing.contentMd),
-            remoteContent: contentMd,
-          )
-          ..updatedAt = now
-          ..deletedAt = null
-          ..archivedAt = null
-          ..lastEditorDeviceId = editorDeviceId
-          ..baseRevision = existing.headRevision
-          ..headRevision = existing.headRevision + 1
-          ..isConflictCopy = false
-          ..originNoteId = null;
-        await _db.noteEntitys.put(existing);
-        outcome = SaveNoteOutcome(
-          note: existing,
-          isNew: false,
-          createdConflictCopy: false,
-          hasInlineConflict: true,
+        final localSnapshot = NoteDocCodec.fromDocJson(
+          docJson: existing.contentDocJson ?? '',
+          fallbackMarkdown: existing.contentMd,
+          fallbackTitle: existing.title,
         );
-        return;
+        final conflict =
+            NoteEntity()
+              ..noteId = newUuid()
+              ..updatedAt = now
+              ..deletedAt = null
+              ..archivedAt = existing.archivedAt
+              ..lastEditorDeviceId = existing.lastEditorDeviceId
+              ..baseRevision = existing.headRevision
+              ..headRevision = existing.headRevision + 1
+              ..isConflictCopy = true
+              ..originNoteId = existing.noteId;
+        _applyDocSnapshotToNote(conflict, localSnapshot);
+        await _db.noteEntitys.put(conflict);
+        createdConflictCopy = true;
       }
 
       existing
-        ..title = normalizedTitle
-        ..contentMd = contentMd
         ..updatedAt = now
         ..deletedAt = null
         ..archivedAt = null
         ..lastEditorDeviceId = editorDeviceId
         ..baseRevision = existing.headRevision
-        ..headRevision = existing.headRevision + 1;
+        ..headRevision = existing.headRevision + 1
+        ..isConflictCopy = false
+        ..originNoteId = null;
+      _applyDocSnapshotToNote(existing, incomingDoc);
 
       await _db.noteEntitys.put(existing);
       outcome = SaveNoteOutcome(
         note: existing,
         isNew: false,
-        createdConflictCopy: false,
+        createdConflictCopy: createdConflictCopy,
         hasInlineConflict: false,
       );
     });
@@ -275,13 +270,11 @@ class NoteRepository {
 
   /// 应用远端笔记快照。
   ///
-  /// 若无法基于 `baseRevision` 快进，则写入 Git 风格内联冲突块。
+  /// 若无法基于 `baseRevision` 快进，则创建冲突副本。
   Future<ApplyRemoteOutcome> applyRemoteSnapshot(
     Map<String, dynamic> snapshot,
   ) async {
     final noteId = snapshot['noteId'] as String;
-    final title = (snapshot['title'] as String?) ?? 'Untitled';
-    final content = (snapshot['contentMd'] as String?) ?? '';
     final updatedAt = DateTime.parse(snapshot['updatedAt'] as String).toUtc();
     final deletedAtRaw = snapshot['deletedAt'] as String?;
     final deletedAt =
@@ -295,6 +288,9 @@ class NoteRepository {
     final incomingConflict = (snapshot['isConflictCopy'] as bool?) ?? false;
     final originNoteId = snapshot['originNoteId'] as String?;
 
+    final schema = (snapshot['schemaVersion'] as int?) ?? 1;
+    final incomingDoc = _snapshotToDoc(snapshot, schema);
+
     late ApplyRemoteOutcome outcome;
 
     await _db.writeTxn(() async {
@@ -304,8 +300,6 @@ class NoteRepository {
         final fresh =
             NoteEntity()
               ..noteId = noteId
-              ..title = title
-              ..contentMd = content
               ..updatedAt = updatedAt
               ..deletedAt = deletedAt
               ..archivedAt = archivedAt
@@ -314,6 +308,7 @@ class NoteRepository {
               ..headRevision = headRevision
               ..isConflictCopy = incomingConflict
               ..originNoteId = originNoteId;
+        _applyDocSnapshotToNote(fresh, incomingDoc);
         await _db.noteEntitys.put(fresh);
         outcome = ApplyRemoteOutcome(
           noteId: fresh.noteId,
@@ -325,11 +320,8 @@ class NoteRepository {
 
       final canFastForward =
           incomingConflict || local.headRevision == baseRevision;
-
       if (canFastForward) {
         local
-          ..title = title
-          ..contentMd = content
           ..updatedAt = updatedAt
           ..deletedAt = deletedAt
           ..archivedAt = archivedAt
@@ -338,6 +330,7 @@ class NoteRepository {
           ..headRevision = headRevision
           ..isConflictCopy = incomingConflict
           ..originNoteId = originNoteId;
+        _applyDocSnapshotToNote(local, incomingDoc);
         await _db.noteEntitys.put(local);
         outcome = ApplyRemoteOutcome(
           noteId: local.noteId,
@@ -347,14 +340,11 @@ class NoteRepository {
         return;
       }
 
-      // 若来自同一编辑设备，说明是远端后续版本到达但本地 revision 游标偏移，
-      // 直接按远端覆盖恢复一致性，避免重复嵌套冲突标记。
+      // 来自同一编辑设备时按远端覆盖，避免无意义冲突副本膨胀。
       final shouldRecoverFromRemote =
           local.lastEditorDeviceId == lastEditorDeviceId;
       if (shouldRecoverFromRemote) {
         local
-          ..title = title
-          ..contentMd = content
           ..updatedAt = updatedAt
           ..deletedAt = deletedAt
           ..archivedAt = archivedAt
@@ -363,6 +353,7 @@ class NoteRepository {
           ..headRevision = headRevision
           ..isConflictCopy = incomingConflict
           ..originNoteId = originNoteId;
+        _applyDocSnapshotToNote(local, incomingDoc);
         await _db.noteEntitys.put(local);
         outcome = ApplyRemoteOutcome(
           noteId: local.noteId,
@@ -372,25 +363,23 @@ class NoteRepository {
         return;
       }
 
-      local
-        ..title = title
-        ..contentMd = _buildGitConflictContent(
-          localContent: _stripOuterConflictMarkers(local.contentMd),
-          remoteContent: content,
-        )
-        ..updatedAt = DateTime.now().toUtc()
-        ..deletedAt = null
-        ..archivedAt = archivedAt
-        ..lastEditorDeviceId = lastEditorDeviceId
-        ..baseRevision = baseRevision
-        ..headRevision = headRevision
-        ..isConflictCopy = false
-        ..originNoteId = null;
-      await _db.noteEntitys.put(local);
+      final conflict =
+          NoteEntity()
+            ..noteId = newUuid()
+            ..updatedAt = DateTime.now().toUtc()
+            ..deletedAt = null
+            ..archivedAt = archivedAt
+            ..lastEditorDeviceId = lastEditorDeviceId
+            ..baseRevision = baseRevision
+            ..headRevision = headRevision
+            ..isConflictCopy = true
+            ..originNoteId = local.noteId;
+      _applyDocSnapshotToNote(conflict, incomingDoc);
+      await _db.noteEntitys.put(conflict);
       outcome = ApplyRemoteOutcome(
         noteId: local.noteId,
-        createdConflictCopy: false,
-        hasInlineConflict: true,
+        createdConflictCopy: true,
+        hasInlineConflict: false,
       );
     });
 
@@ -411,11 +400,10 @@ class NoteRepository {
       final local =
           await _db.noteEntitys.where().noteIdEqualTo(noteId).findFirst();
       if (local == null) {
+        final ghostSnapshot = NoteDocCodec.fromMarkdown('# Deleted Note\n');
         final ghost =
             NoteEntity()
               ..noteId = noteId
-              ..title = 'Deleted Note'
-              ..contentMd = ''
               ..updatedAt = deletedAt
               ..deletedAt = deletedAt
               ..archivedAt = null
@@ -424,6 +412,7 @@ class NoteRepository {
               ..headRevision = headRevision
               ..isConflictCopy = false
               ..originNoteId = null;
+        _applyDocSnapshotToNote(ghost, ghostSnapshot);
         await _db.noteEntitys.put(ghost);
         return;
       }
@@ -442,8 +431,14 @@ class NoteRepository {
   Map<String, dynamic> toSnapshot(NoteEntity note) {
     return {
       'noteId': note.noteId,
-      'title': note.title,
+      'contentDocJson': note.contentDocJson,
       'contentMd': note.contentMd,
+      'title': note.displayTitleCache ?? note.title,
+      'displayTitleCache': note.displayTitleCache,
+      'previewTextCache': note.previewTextCache,
+      'contentFormat': note.contentFormat,
+      'schemaVersion': note.schemaVersion == 0 ? 1 : note.schemaVersion,
+      'docVersion': note.docVersion == 0 ? 1 : note.docVersion,
       'updatedAt': note.updatedAt.toUtc().toIso8601String(),
       'deletedAt': note.deletedAt?.toUtc().toIso8601String(),
       'archivedAt': note.archivedAt?.toUtc().toIso8601String(),
@@ -460,30 +455,102 @@ class NoteRepository {
     return jsonEncode(toSnapshot(note));
   }
 
-  /// 生成 Git 风格的内联冲突内容。
-  String _buildGitConflictContent({
-    required String localContent,
-    required String remoteContent,
-  }) {
-    return '<<<<<<< LOCAL\n'
-        '$localContent\n'
-        '=======\n'
-        '$remoteContent\n'
-        '>>>>>>> REMOTE';
+  NoteDocSnapshot _snapshotToDoc(Map<String, dynamic> snapshot, int schema) {
+    if (schema >= 2) {
+      final contentDocJson = snapshot['contentDocJson'] as String?;
+      if (contentDocJson != null && contentDocJson.trim().isNotEmpty) {
+        return NoteDocCodec.fromDocJson(docJson: contentDocJson);
+      }
+    }
+
+    final title = (snapshot['title'] as String?) ?? NoteDocCodec.defaultHeading;
+    final contentMd = (snapshot['contentMd'] as String?) ?? '';
+    final markdown = NoteDocCodec.buildMarkdownFromLegacy(
+      title: title,
+      contentMd: contentMd,
+    );
+    return NoteDocCodec.fromMarkdown(markdown);
   }
 
-  String _stripOuterConflictMarkers(String content) {
-    final trimmed = content.trim();
-    if (!trimmed.startsWith('<<<<<<< LOCAL') ||
-        !trimmed.contains('\n=======\n') ||
-        !trimmed.endsWith('>>>>>>> REMOTE')) {
-      return content;
+  void _applyDocSnapshotToNote(NoteEntity note, NoteDocSnapshot snapshot) {
+    note
+      ..contentDocJson = snapshot.contentDocJson
+      ..contentMd = snapshot.contentMd
+      ..title = snapshot.displayTitle
+      ..displayTitleCache = snapshot.displayTitle
+      ..previewTextCache = snapshot.previewText
+      ..contentFormat = snapshot.contentFormat
+      ..docVersion = snapshot.schemaVersion
+      ..schemaVersion = snapshot.schemaVersion;
+  }
+
+  Future<bool> _migrateSingleNote(NoteEntity note) async {
+    final hasDocJson = (note.contentDocJson ?? '').trim().isNotEmpty;
+
+    if (!hasDocJson) {
+      final markdown = NoteDocCodec.buildMarkdownFromLegacy(
+        title: note.title,
+        contentMd: note.contentMd,
+      );
+      note
+        ..contentMd = markdown
+        ..title = NoteDocCodec.extractDisplayTitle(markdown)
+        ..displayTitleCache = NoteDocCodec.extractDisplayTitle(markdown)
+        ..previewTextCache = NoteDocCodec.extractPreviewText(markdown)
+        ..contentFormat = NoteDocCodec.contentFormat
+        ..schemaVersion = NoteDocCodec.schemaVersion
+        ..docVersion = NoteDocCodec.schemaVersion;
+      return true;
     }
-    final start = '<<<<<<< LOCAL\n'.length;
-    final mid = trimmed.indexOf('\n=======\n');
-    if (mid <= start) {
-      return content;
+
+    final markdown = note.contentMd.trim();
+    final looksLikeDefaultHeadingOnly =
+        markdown == '# 标题' || markdown == '# 标题\n' || markdown == '# Title';
+    if (markdown.isNotEmpty && !looksLikeDefaultHeadingOnly) {
+      note
+        ..displayTitleCache = NoteDocCodec.extractDisplayTitle(note.contentMd)
+        ..previewTextCache = NoteDocCodec.extractPreviewText(note.contentMd)
+        ..contentFormat = NoteDocCodec.contentFormat
+        ..schemaVersion =
+            note.schemaVersion == 0
+                ? NoteDocCodec.schemaVersion
+                : note.schemaVersion
+        ..docVersion =
+            note.docVersion == 0 ? NoteDocCodec.schemaVersion : note.docVersion;
+      return true;
     }
-    return trimmed.substring(start, mid);
+
+    final recovered = await _recoverFromLatestOpPayload(note.noteId);
+    if (recovered == null) {
+      return false;
+    }
+    _applyDocSnapshotToNote(note, recovered);
+    return true;
+  }
+
+  Future<NoteDocSnapshot?> _recoverFromLatestOpPayload(String noteId) async {
+    final logs =
+        await _db.opLogEntitys
+            .where()
+            .filter()
+            .noteIdEqualTo(noteId)
+            .sortByLamportDesc()
+            .findAll();
+    for (final log in logs) {
+      if (log.opType == 'delete') {
+        continue;
+      }
+      try {
+        final payload = jsonDecode(log.payloadJson);
+        if (payload is! Map<String, dynamic>) {
+          continue;
+        }
+        final schema = (payload['schemaVersion'] as int?) ?? 1;
+        return _snapshotToDoc(payload, schema);
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
   }
 }
