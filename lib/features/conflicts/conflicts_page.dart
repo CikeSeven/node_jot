@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
 import '../../data/isar/collections/note_entity.dart';
@@ -46,10 +45,14 @@ class ConflictsPage extends ConsumerWidget {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final note = conflicts[index];
+                  final displayTitle =
+                      (note.displayTitleCache ?? '').trim().isEmpty
+                          ? note.title
+                          : note.displayTitleCache!;
                   return IosFrostedPanel(
                     radius: 16,
                     child: IosCardTile(
-                      title: note.title,
+                      title: displayTitle,
                       subtitle: l10n.updatedAtLabel(
                         DateFormat(
                           'yyyy-MM-dd HH:mm',

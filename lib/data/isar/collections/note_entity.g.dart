@@ -27,48 +27,78 @@ const NoteEntitySchema = CollectionSchema(
       name: r'baseRevision',
       type: IsarType.long,
     ),
-    r'contentMd': PropertySchema(
+    r'contentDocJson': PropertySchema(
       id: 2,
+      name: r'contentDocJson',
+      type: IsarType.string,
+    ),
+    r'contentFormat': PropertySchema(
+      id: 3,
+      name: r'contentFormat',
+      type: IsarType.string,
+    ),
+    r'contentMd': PropertySchema(
+      id: 4,
       name: r'contentMd',
       type: IsarType.string,
     ),
     r'deletedAt': PropertySchema(
-      id: 3,
+      id: 5,
       name: r'deletedAt',
       type: IsarType.dateTime,
     ),
+    r'displayTitleCache': PropertySchema(
+      id: 6,
+      name: r'displayTitleCache',
+      type: IsarType.string,
+    ),
+    r'docVersion': PropertySchema(
+      id: 7,
+      name: r'docVersion',
+      type: IsarType.long,
+    ),
     r'headRevision': PropertySchema(
-      id: 4,
+      id: 8,
       name: r'headRevision',
       type: IsarType.long,
     ),
     r'isConflictCopy': PropertySchema(
-      id: 5,
+      id: 9,
       name: r'isConflictCopy',
       type: IsarType.bool,
     ),
     r'lastEditorDeviceId': PropertySchema(
-      id: 6,
+      id: 10,
       name: r'lastEditorDeviceId',
       type: IsarType.string,
     ),
     r'noteId': PropertySchema(
-      id: 7,
+      id: 11,
       name: r'noteId',
       type: IsarType.string,
     ),
     r'originNoteId': PropertySchema(
-      id: 8,
+      id: 12,
       name: r'originNoteId',
       type: IsarType.string,
     ),
+    r'previewTextCache': PropertySchema(
+      id: 13,
+      name: r'previewTextCache',
+      type: IsarType.string,
+    ),
+    r'schemaVersion': PropertySchema(
+      id: 14,
+      name: r'schemaVersion',
+      type: IsarType.long,
+    ),
     r'title': PropertySchema(
-      id: 9,
+      id: 15,
       name: r'title',
       type: IsarType.string,
     ),
     r'updatedAt': PropertySchema(
-      id: 10,
+      id: 16,
       name: r'updatedAt',
       type: IsarType.dateTime,
     )
@@ -107,11 +137,35 @@ int _noteEntityEstimateSize(
   Map<Type, List<int>> allOffsets,
 ) {
   var bytesCount = offsets.last;
+  {
+    final value = object.contentDocJson;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.contentFormat;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.contentMd.length * 3;
+  {
+    final value = object.displayTitleCache;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.lastEditorDeviceId.length * 3;
   bytesCount += 3 + object.noteId.length * 3;
   {
     final value = object.originNoteId;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.previewTextCache;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
     }
@@ -128,15 +182,21 @@ void _noteEntitySerialize(
 ) {
   writer.writeDateTime(offsets[0], object.archivedAt);
   writer.writeLong(offsets[1], object.baseRevision);
-  writer.writeString(offsets[2], object.contentMd);
-  writer.writeDateTime(offsets[3], object.deletedAt);
-  writer.writeLong(offsets[4], object.headRevision);
-  writer.writeBool(offsets[5], object.isConflictCopy);
-  writer.writeString(offsets[6], object.lastEditorDeviceId);
-  writer.writeString(offsets[7], object.noteId);
-  writer.writeString(offsets[8], object.originNoteId);
-  writer.writeString(offsets[9], object.title);
-  writer.writeDateTime(offsets[10], object.updatedAt);
+  writer.writeString(offsets[2], object.contentDocJson);
+  writer.writeString(offsets[3], object.contentFormat);
+  writer.writeString(offsets[4], object.contentMd);
+  writer.writeDateTime(offsets[5], object.deletedAt);
+  writer.writeString(offsets[6], object.displayTitleCache);
+  writer.writeLong(offsets[7], object.docVersion);
+  writer.writeLong(offsets[8], object.headRevision);
+  writer.writeBool(offsets[9], object.isConflictCopy);
+  writer.writeString(offsets[10], object.lastEditorDeviceId);
+  writer.writeString(offsets[11], object.noteId);
+  writer.writeString(offsets[12], object.originNoteId);
+  writer.writeString(offsets[13], object.previewTextCache);
+  writer.writeLong(offsets[14], object.schemaVersion);
+  writer.writeString(offsets[15], object.title);
+  writer.writeDateTime(offsets[16], object.updatedAt);
 }
 
 NoteEntity _noteEntityDeserialize(
@@ -148,16 +208,22 @@ NoteEntity _noteEntityDeserialize(
   final object = NoteEntity();
   object.archivedAt = reader.readDateTimeOrNull(offsets[0]);
   object.baseRevision = reader.readLong(offsets[1]);
-  object.contentMd = reader.readString(offsets[2]);
-  object.deletedAt = reader.readDateTimeOrNull(offsets[3]);
-  object.headRevision = reader.readLong(offsets[4]);
-  object.isConflictCopy = reader.readBool(offsets[5]);
+  object.contentDocJson = reader.readStringOrNull(offsets[2]);
+  object.contentFormat = reader.readStringOrNull(offsets[3]);
+  object.contentMd = reader.readString(offsets[4]);
+  object.deletedAt = reader.readDateTimeOrNull(offsets[5]);
+  object.displayTitleCache = reader.readStringOrNull(offsets[6]);
+  object.docVersion = reader.readLong(offsets[7]);
+  object.headRevision = reader.readLong(offsets[8]);
+  object.isConflictCopy = reader.readBool(offsets[9]);
   object.isarId = id;
-  object.lastEditorDeviceId = reader.readString(offsets[6]);
-  object.noteId = reader.readString(offsets[7]);
-  object.originNoteId = reader.readStringOrNull(offsets[8]);
-  object.title = reader.readString(offsets[9]);
-  object.updatedAt = reader.readDateTime(offsets[10]);
+  object.lastEditorDeviceId = reader.readString(offsets[10]);
+  object.noteId = reader.readString(offsets[11]);
+  object.originNoteId = reader.readStringOrNull(offsets[12]);
+  object.previewTextCache = reader.readStringOrNull(offsets[13]);
+  object.schemaVersion = reader.readLong(offsets[14]);
+  object.title = reader.readString(offsets[15]);
+  object.updatedAt = reader.readDateTime(offsets[16]);
   return object;
 }
 
@@ -173,22 +239,34 @@ P _noteEntityDeserializeProp<P>(
     case 1:
       return (reader.readLong(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
-    case 3:
-      return (reader.readDateTimeOrNull(offset)) as P;
-    case 4:
-      return (reader.readLong(offset)) as P;
-    case 5:
-      return (reader.readBool(offset)) as P;
-    case 6:
-      return (reader.readString(offset)) as P;
-    case 7:
-      return (reader.readString(offset)) as P;
-    case 8:
       return (reader.readStringOrNull(offset)) as P;
-    case 9:
+    case 3:
+      return (reader.readStringOrNull(offset)) as P;
+    case 4:
       return (reader.readString(offset)) as P;
+    case 5:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 6:
+      return (reader.readStringOrNull(offset)) as P;
+    case 7:
+      return (reader.readLong(offset)) as P;
+    case 8:
+      return (reader.readLong(offset)) as P;
+    case 9:
+      return (reader.readBool(offset)) as P;
     case 10:
+      return (reader.readString(offset)) as P;
+    case 11:
+      return (reader.readString(offset)) as P;
+    case 12:
+      return (reader.readStringOrNull(offset)) as P;
+    case 13:
+      return (reader.readStringOrNull(offset)) as P;
+    case 14:
+      return (reader.readLong(offset)) as P;
+    case 15:
+      return (reader.readString(offset)) as P;
+    case 16:
       return (reader.readDateTime(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -519,6 +597,314 @@ extension NoteEntityQueryFilter
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'contentDocJson',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'contentDocJson',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'contentDocJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'contentDocJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'contentDocJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'contentDocJson',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'contentDocJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'contentDocJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'contentDocJson',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'contentDocJson',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'contentDocJson',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentDocJsonIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'contentDocJson',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'contentFormat',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'contentFormat',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'contentFormat',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'contentFormat',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'contentFormat',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'contentFormat',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'contentFormat',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'contentFormat',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'contentFormat',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'contentFormat',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'contentFormat',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      contentFormatIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'contentFormat',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition> contentMdEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -717,6 +1103,215 @@ extension NoteEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'deletedAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'displayTitleCache',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'displayTitleCache',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'displayTitleCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'displayTitleCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'displayTitleCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'displayTitleCache',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'displayTitleCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'displayTitleCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'displayTitleCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'displayTitleCache',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'displayTitleCache',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      displayTitleCacheIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'displayTitleCache',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition> docVersionEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'docVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      docVersionGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'docVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      docVersionLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'docVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition> docVersionBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'docVersion',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -1265,6 +1860,216 @@ extension NoteEntityQueryFilter
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'previewTextCache',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'previewTextCache',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'previewTextCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'previewTextCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'previewTextCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'previewTextCache',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'previewTextCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'previewTextCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'previewTextCache',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'previewTextCache',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'previewTextCache',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      previewTextCacheIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'previewTextCache',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      schemaVersionEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'schemaVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      schemaVersionGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'schemaVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      schemaVersionLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'schemaVersion',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition>
+      schemaVersionBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'schemaVersion',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QAfterFilterCondition> titleEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -1483,6 +2288,31 @@ extension NoteEntityQuerySortBy
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByContentDocJson() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentDocJson', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy>
+      sortByContentDocJsonDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentDocJson', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByContentFormat() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentFormat', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByContentFormatDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentFormat', Sort.desc);
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByContentMd() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'contentMd', Sort.asc);
@@ -1504,6 +2334,31 @@ extension NoteEntityQuerySortBy
   QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByDeletedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'deletedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByDisplayTitleCache() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'displayTitleCache', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy>
+      sortByDisplayTitleCacheDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'displayTitleCache', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByDocVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'docVersion', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByDocVersionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'docVersion', Sort.desc);
     });
   }
 
@@ -1570,6 +2425,31 @@ extension NoteEntityQuerySortBy
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByPreviewTextCache() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'previewTextCache', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy>
+      sortByPreviewTextCacheDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'previewTextCache', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortBySchemaVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'schemaVersion', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortBySchemaVersionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'schemaVersion', Sort.desc);
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> sortByTitle() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'title', Sort.asc);
@@ -1621,6 +2501,31 @@ extension NoteEntityQuerySortThenBy
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByContentDocJson() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentDocJson', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy>
+      thenByContentDocJsonDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentDocJson', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByContentFormat() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentFormat', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByContentFormatDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'contentFormat', Sort.desc);
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByContentMd() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'contentMd', Sort.asc);
@@ -1642,6 +2547,31 @@ extension NoteEntityQuerySortThenBy
   QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByDeletedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'deletedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByDisplayTitleCache() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'displayTitleCache', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy>
+      thenByDisplayTitleCacheDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'displayTitleCache', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByDocVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'docVersion', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByDocVersionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'docVersion', Sort.desc);
     });
   }
 
@@ -1720,6 +2650,31 @@ extension NoteEntityQuerySortThenBy
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByPreviewTextCache() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'previewTextCache', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy>
+      thenByPreviewTextCacheDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'previewTextCache', Sort.desc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenBySchemaVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'schemaVersion', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenBySchemaVersionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'schemaVersion', Sort.desc);
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QAfterSortBy> thenByTitle() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'title', Sort.asc);
@@ -1759,6 +2714,22 @@ extension NoteEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByContentDocJson(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'contentDocJson',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByContentFormat(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'contentFormat',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByContentMd(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1769,6 +2740,20 @@ extension NoteEntityQueryWhereDistinct
   QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByDeletedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'deletedAt');
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByDisplayTitleCache(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'displayTitleCache',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByDocVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'docVersion');
     });
   }
 
@@ -1806,6 +2791,20 @@ extension NoteEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByPreviewTextCache(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'previewTextCache',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctBySchemaVersion() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'schemaVersion');
+    });
+  }
+
   QueryBuilder<NoteEntity, NoteEntity, QDistinct> distinctByTitle(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1840,6 +2839,18 @@ extension NoteEntityQueryProperty
     });
   }
 
+  QueryBuilder<NoteEntity, String?, QQueryOperations> contentDocJsonProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'contentDocJson');
+    });
+  }
+
+  QueryBuilder<NoteEntity, String?, QQueryOperations> contentFormatProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'contentFormat');
+    });
+  }
+
   QueryBuilder<NoteEntity, String, QQueryOperations> contentMdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'contentMd');
@@ -1849,6 +2860,19 @@ extension NoteEntityQueryProperty
   QueryBuilder<NoteEntity, DateTime?, QQueryOperations> deletedAtProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'deletedAt');
+    });
+  }
+
+  QueryBuilder<NoteEntity, String?, QQueryOperations>
+      displayTitleCacheProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'displayTitleCache');
+    });
+  }
+
+  QueryBuilder<NoteEntity, int, QQueryOperations> docVersionProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'docVersion');
     });
   }
 
@@ -1880,6 +2904,19 @@ extension NoteEntityQueryProperty
   QueryBuilder<NoteEntity, String?, QQueryOperations> originNoteIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'originNoteId');
+    });
+  }
+
+  QueryBuilder<NoteEntity, String?, QQueryOperations>
+      previewTextCacheProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'previewTextCache');
+    });
+  }
+
+  QueryBuilder<NoteEntity, int, QQueryOperations> schemaVersionProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'schemaVersion');
     });
   }
 

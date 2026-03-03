@@ -1,22 +1,20 @@
 import 'dart:async';
 
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/models/app_services.dart';
+import '../../core/utils/note_doc_codec.dart';
 import '../../l10n/app_localizations.dart';
 import '../../ui/widgets/ios_frosted_panel.dart';
 
-/// 编辑器显示模式。
-enum _EditorViewMode { edit, preview }
-
 /// 笔记编辑页。
 ///
-/// 支持创建、编辑、保存、软删除与 Markdown 预览。
+/// 使用 AppFlowyEditor 编辑文档，首行 `# 标题` 作为标题来源。
 class NoteEditorPage extends ConsumerStatefulWidget {
   const NoteEditorPage({super.key, this.noteId});
 
@@ -27,97 +25,109 @@ class NoteEditorPage extends ConsumerStatefulWidget {
 }
 
 class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
-  static const _autosaveDelay = Duration(milliseconds: 300);
+  static const _autosaveDelay = Duration(milliseconds: 320);
+  static const _docPollInterval = Duration(milliseconds: 420);
   static const _savedHintHold = Duration(seconds: 3);
   static const _deleteUndoSnackDuration = Duration(seconds: 4);
   static const _restoreHintDuration = Duration(seconds: 2);
 
-  final _titleController = TextEditingController();
-  final _contentController = TextEditingController();
-  final _editScrollController = ScrollController();
-  final _previewScrollController = ScrollController();
-
   Timer? _autosaveTimer;
   Timer? _savedHintTimer;
+  Timer? _docPollTimer;
 
+  EditorState? _editorState;
   bool _loading = true;
   bool _isSaving = false;
   bool _hasPendingSave = false;
   bool _isBootstrapping = true;
-  bool _muteDraftListener = false;
   bool _showSavedHintInBadge = false;
-  bool _previewScrollInitialized = false;
   int? _expectedHeadRevision;
   String? _activeNoteId;
-  String _lastSavedNormalizedTitle = '';
-  String _lastSavedContent = '';
-  _EditorViewMode _viewMode = _EditorViewMode.edit;
+  String _lastSavedDocJson = '';
+  String _observedDocJson = '';
 
   bool get _isNewNoteSession => widget.noteId == null;
+
+  int get _contentCharCount => _currentMarkdown.characters.length;
+
+  String get _currentMarkdown {
+    final state = _editorState;
+    if (state == null) {
+      return '';
+    }
+    final snapshot = NoteDocCodec.fromDocument(state.document);
+    return snapshot.contentMd;
+  }
 
   @override
   void initState() {
     super.initState();
     _activeNoteId = widget.noteId;
-    _titleController.addListener(_onDraftChanged);
-    _contentController.addListener(_onDraftChanged);
     _load();
   }
 
-  /// 根据 noteId 加载已有笔记内容；新建时预填“标题N”。
   Future<void> _load() async {
     final services = ref.read(appServicesProvider);
 
     if (_activeNoteId == null) {
-      final nextTitleIndex = await services.noteRepository.getNextAutoTitleIndex();
-      _setDraftSilently(title: '标题$nextTitleIndex', content: '');
-      _lastSavedNormalizedTitle = _normalizedTitle(_titleController.text);
-      _lastSavedContent = _contentController.text;
+      final markdown = NoteDocCodec.buildNewNoteMarkdown();
+      final document = NoteDocCodec.decodeDocument(fallbackMarkdown: markdown);
+      _editorState = EditorState(document: document);
+      final snapshot = NoteDocCodec.fromDocument(document);
+      _lastSavedDocJson = snapshot.contentDocJson;
+      _observedDocJson = snapshot.contentDocJson;
       _isBootstrapping = false;
-      setState(() => _loading = false);
+      _startDocPolling();
+      if (mounted) {
+        setState(() => _loading = false);
+      }
       return;
     }
 
     final note = await services.noteRepository.getByNoteId(_activeNoteId!);
     if (note != null) {
-      _setDraftSilently(title: note.title, content: note.contentMd);
+      final document = NoteDocCodec.decodeDocument(
+        contentDocJson: note.contentDocJson,
+        fallbackMarkdown: note.contentMd,
+        fallbackTitle: note.title,
+      );
+      _editorState = EditorState(document: document);
       _expectedHeadRevision = note.headRevision;
+      final snapshot = NoteDocCodec.fromDocument(document);
+      _lastSavedDocJson = snapshot.contentDocJson;
+      _observedDocJson = snapshot.contentDocJson;
+    } else {
+      final markdown = NoteDocCodec.buildNewNoteMarkdown();
+      final document = NoteDocCodec.decodeDocument(fallbackMarkdown: markdown);
+      _editorState = EditorState(document: document);
+      final snapshot = NoteDocCodec.fromDocument(document);
+      _lastSavedDocJson = snapshot.contentDocJson;
+      _observedDocJson = snapshot.contentDocJson;
     }
-    _lastSavedNormalizedTitle = _normalizedTitle(_titleController.text);
-    _lastSavedContent = _contentController.text;
+
     _isBootstrapping = false;
+    _startDocPolling();
     if (mounted) {
       setState(() => _loading = false);
     }
   }
 
-  void _setDraftSilently({String? title, String? content}) {
-    _muteDraftListener = true;
-    if (title != null) {
-      _titleController.text = title;
-    }
-    if (content != null) {
-      _contentController.text = content;
-    }
-    _muteDraftListener = false;
+  void _startDocPolling() {
+    _docPollTimer?.cancel();
+    _docPollTimer = Timer.periodic(_docPollInterval, (_) {
+      _checkDocChanged();
+    });
   }
 
-  String _normalizedTitle(String input) {
-    final trimmed = input.trim();
-    return trimmed.isEmpty ? 'Untitled' : trimmed;
-  }
-
-  bool _hasUnsavedChanges() {
-    return _normalizedTitle(_titleController.text) != _lastSavedNormalizedTitle ||
-        _contentController.text != _lastSavedContent;
-  }
-
-  int get _contentCharCount => _contentController.text.characters.length;
-
-  void _onDraftChanged() {
-    if (_loading || _isBootstrapping || _muteDraftListener) {
+  void _checkDocChanged() {
+    if (_loading || _isBootstrapping || _editorState == null) {
       return;
     }
+    final snapshot = NoteDocCodec.fromDocument(_editorState!.document);
+    if (snapshot.contentDocJson == _observedDocJson) {
+      return;
+    }
+    _observedDocJson = snapshot.contentDocJson;
     if (mounted) {
       setState(() {});
     }
@@ -127,8 +137,18 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     });
   }
 
+  bool _hasUnsavedChanges() {
+    final state = _editorState;
+    if (state == null) {
+      return false;
+    }
+    final snapshot = NoteDocCodec.fromDocument(state.document);
+    return snapshot.contentDocJson != _lastSavedDocJson;
+  }
+
   Future<void> _saveDraft() async {
-    if (_loading || _isBootstrapping || !_hasUnsavedChanges()) {
+    final state = _editorState;
+    if (_loading || _isBootstrapping || state == null || !_hasUnsavedChanges()) {
       return;
     }
     if (_isSaving) {
@@ -138,21 +158,22 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
     _isSaving = true;
     final services = ref.read(appServicesProvider);
+    final outgoing = NoteDocCodec.fromDocument(state.document);
     try {
       final result = await services.syncEngine.saveLocalNote(
         noteId: _activeNoteId,
-        title: _titleController.text,
-        contentMd: _contentController.text,
+        contentDocJson: outgoing.contentDocJson,
         expectedHeadRevision: _expectedHeadRevision,
       );
       _activeNoteId = result.note.noteId;
       _expectedHeadRevision = result.note.headRevision;
-      _lastSavedNormalizedTitle = _normalizedTitle(result.note.title);
-      _lastSavedContent = result.note.contentMd;
-      if (result.hasInlineConflict && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.inlineConflictInserted)),
-        );
+      _lastSavedDocJson = result.note.contentDocJson ?? outgoing.contentDocJson;
+      _observedDocJson = _lastSavedDocJson;
+
+      if (result.createdConflictCopy && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.conflictCopyCreated)));
       }
     } catch (_) {
       // 自动保存失败时静默等待下一次输入重试，避免频繁打断用户编辑。
@@ -179,7 +200,12 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     if (noteId == null) {
       return;
     }
-    if (_contentController.text.trim().isNotEmpty) {
+
+    final content = _currentMarkdown.trim();
+    final normalized = content
+        .replaceFirst(RegExp(r'^#\s*标题\s*\n*'), '')
+        .trim();
+    if (normalized.isNotEmpty) {
       return;
     }
 
@@ -199,53 +225,12 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     return true;
   }
 
-  void _switchViewMode(_EditorViewMode mode) {
-    if (_viewMode == mode) {
-      return;
-    }
-    if (mode == _EditorViewMode.preview) {
-      FocusScope.of(context).unfocus();
-    }
-    setState(() {
-      _viewMode = mode;
-    });
-
-    if (mode == _EditorViewMode.preview && !_previewScrollInitialized) {
-      _previewScrollInitialized = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _syncPreviewScrollFromEdit();
-      });
-    }
-  }
-
-  /// 首次进入预览时按滚动比例对齐，避免从顶部突变。
-  void _syncPreviewScrollFromEdit() {
-    if (!mounted) {
-      return;
-    }
-    if (!_editScrollController.hasClients || !_previewScrollController.hasClients) {
-      return;
-    }
-    final editMax = _editScrollController.position.maxScrollExtent;
-    final ratio =
-        editMax <= 0
-            ? 0.0
-            : (_editScrollController.offset / editMax).clamp(0.0, 1.0).toDouble();
-    final previewMax = _previewScrollController.position.maxScrollExtent;
-    final target = (previewMax * ratio).clamp(0.0, previewMax).toDouble();
-    _previewScrollController.jumpTo(target);
-  }
-
   @override
   void dispose() {
     _autosaveTimer?.cancel();
     _savedHintTimer?.cancel();
-    _titleController.removeListener(_onDraftChanged);
-    _contentController.removeListener(_onDraftChanged);
-    _titleController.dispose();
-    _contentController.dispose();
-    _editScrollController.dispose();
-    _previewScrollController.dispose();
+    _docPollTimer?.cancel();
+    _editorState?.dispose();
     super.dispose();
   }
 
@@ -267,40 +252,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
             ),
           ),
           actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: SizedBox(
-                width: 150,
-                child: CupertinoSlidingSegmentedControl<_EditorViewMode>(
-                  groupValue: _viewMode,
-                  thumbColor: colorScheme.primary.withValues(alpha: 0.22),
-                  backgroundColor: colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.38,
-                  ),
-                  children: {
-                    _EditorViewMode.edit: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(l10n.editorMode),
-                    ),
-                    _EditorViewMode.preview: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(l10n.previewMode),
-                    ),
-                  },
-                  onValueChanged: (value) {
-                    if (value != null) {
-                      _switchViewMode(value);
-                    }
-                  },
-                ),
-              ),
-            ),
             IconButton(
               style: ButtonStyle(
                 foregroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
@@ -331,7 +282,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
             gradient: AppTheme.pageBackground(Theme.of(context).brightness),
           ),
           child:
-              _loading
+              _loading || _editorState == null
                   ? const Center(child: CircularProgressIndicator())
                   : SafeArea(
                     child: Stack(
@@ -339,10 +290,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
                         Positioned.fill(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child:
-                                _viewMode == _EditorViewMode.edit
-                                    ? _buildEditBody()
-                                    : _buildPreviewBody(),
+                            child: _buildEditor(),
                           ),
                         ),
                         Positioned(
@@ -428,153 +376,13 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     );
   }
 
-  /// 编辑模式 UI：标题输入 + 正文输入。
-  Widget _buildEditBody() {
-    final l10n = context.l10n;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const titleAreaEstimate = 72.0;
-        final contentMinHeight =
-            (constraints.maxHeight - titleAreaEstimate)
-                .clamp(140.0, double.infinity)
-                .toDouble();
-
-        return ListView(
-          controller: _editScrollController,
-          padding: const EdgeInsets.only(top: 6, bottom: 72),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-          children: [
-            TextField(
-              controller: _titleController,
-              maxLines: 1,
-              textInputAction: TextInputAction.next,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontSize: 34,
-                letterSpacing: -0.8,
-              ),
-              decoration: InputDecoration(
-                hintText: l10n.titleHint,
-                filled: false,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
-            ),
-            const Divider(height: 1, thickness: 1),
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: contentMinHeight),
-              child: TextField(
-                controller: _contentController,
-                maxLines: null,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: InputDecoration(
-                  hintText: l10n.markdownHint,
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.only(top: 12),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// 预览模式 UI：标题文本 + Markdown 渲染内容。
-  Widget _buildPreviewBody() {
-    final l10n = context.l10n;
-    final title = _titleController.text.trim();
-    final content = _contentController.text;
-    final showEmptyHint = content.trim().isEmpty;
-
-    return ListView(
-      controller: _previewScrollController,
+  Widget _buildEditor() {
+    return Padding(
       padding: const EdgeInsets.only(top: 6, bottom: 72),
-      children: [
-        if (title.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontSize: 34, letterSpacing: -0.8),
-            ),
-          ),
-        const Divider(height: 1, thickness: 1),
-        if (showEmptyHint)
-          Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Text(
-              l10n.markdownHint,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: MarkdownBody(
-              data: content,
-              styleSheet: _buildMarkdownStyle(context),
-              selectable: true,
-            ),
-          ),
-      ],
-    );
-  }
-
-  MarkdownStyleSheet _buildMarkdownStyle(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return MarkdownStyleSheet.fromTheme(theme).copyWith(
-      p: theme.textTheme.bodyLarge?.copyWith(height: 1.62),
-      h1: theme.textTheme.headlineMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.4,
-      ),
-      h2: theme.textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.25,
-      ),
-      h3: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-      blockquote: theme.textTheme.bodyMedium?.copyWith(
-        color: AppColors.textSecondary,
-      ),
-      blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      blockquoteDecoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.36),
-        borderRadius: BorderRadius.circular(10),
-        border: Border(
-          left: BorderSide(
-            color: colorScheme.primary.withValues(alpha: 0.45),
-            width: 3,
-          ),
-        ),
-      ),
-      code: theme.textTheme.bodyMedium?.copyWith(
-        fontFamily: 'monospace',
-        backgroundColor: colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.68,
-        ),
-      ),
-      codeblockPadding: const EdgeInsets.all(12),
-      codeblockDecoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      listBullet: theme.textTheme.bodyLarge,
-      horizontalRuleDecoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
-          ),
-        ),
+      child: AppFlowyEditor(
+        editorState: _editorState!,
+        shrinkWrap: false,
+        autoFocus: false,
       ),
     );
   }

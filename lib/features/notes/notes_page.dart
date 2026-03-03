@@ -584,6 +584,14 @@ class _NoteCard extends StatelessWidget {
     final l10n = context.l10n;
     final formatter = DateFormat('yyyy-MM-dd HH:mm');
     final colorScheme = Theme.of(context).colorScheme;
+    final displayTitle =
+        (note.displayTitleCache ?? '').trim().isEmpty
+            ? note.title
+            : note.displayTitleCache!;
+    final previewText =
+        (note.previewTextCache ?? '').trim().isEmpty
+            ? note.contentMd
+            : note.previewTextCache!;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -608,7 +616,7 @@ class _NoteCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        note.title,
+                        displayTitle,
                         style: Theme.of(
                           context,
                         ).textTheme.titleMedium?.copyWith(fontSize: 17),
@@ -626,7 +634,7 @@ class _NoteCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  note.contentMd,
+                  previewText,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium,
