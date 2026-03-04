@@ -70,6 +70,7 @@ class AppServices {
 
     final noteRepository = NoteRepository(isarService.db);
     await noteRepository.migrateLegacyNotesToDocJson();
+    await noteRepository.purgeConflictCopies();
     final deviceRepository = DeviceRepository(isarService.db);
     final opLogRepository = OpLogRepository(isarService.db);
     final syncCursorRepository = SyncCursorRepository(isarService.db);
@@ -139,9 +140,8 @@ class AppServices {
   }) async {
     final trusted = await deviceRepository.getTrustedDevices();
     for (final device in trusted) {
-      final oneTimeEnabled = appSettingsService.getDeviceOneTimeConnectionEnabled(
-        device.deviceId,
-      );
+      final oneTimeEnabled = appSettingsService
+          .getDeviceOneTimeConnectionEnabled(device.deviceId);
       if (!oneTimeEnabled) {
         continue;
       }

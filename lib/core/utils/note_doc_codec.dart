@@ -30,7 +30,7 @@ class NoteDocCodec {
   static const String contentFormat = 'appflowy_doc';
 
   /// 新建笔记默认标题。
-  static const String defaultHeading = '标题';
+  static const String defaultHeading = '未命名笔记';
 
   /// 构建新笔记的默认 markdown 模板（H1 + 空行）。
   static String buildNewNoteMarkdown({String heading = defaultHeading}) {
