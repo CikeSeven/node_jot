@@ -32,10 +32,8 @@ class NoteEditorPage extends ConsumerStatefulWidget {
   ConsumerState<NoteEditorPage> createState() => _NoteEditorPageState();
 }
 
-class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
-  /// “已保存”提示的停留时长。
-  static const Duration _savedHintDuration = Duration(seconds: 3);
-
+class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
+    with WidgetsBindingObserver {
   /// 删除后支持撤销的有效时长（对应 SnackBar duration）。
   static const Duration _deleteUndoDuration = Duration(seconds: 4);
 
@@ -45,25 +43,19 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   /// 编辑器快捷键集合（在默认快捷键基础上插入 Markdown 感知粘贴）。
   late final List<CommandShortcutEvent> _commandShortcutEvents;
 
-  /// 右下角状态卡片是否显示“已保存”文案。
-  bool _showSavedHint = false;
-
   /// 防止重复触发返回逻辑（例如系统返回与按钮返回同时触发）。
   bool _isClosing = false;
-
-  /// 控制“已保存”提示自动收起的计时器。
-  Timer? _savedHintTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 通过 Provider 读取全局服务并创建编辑会话控制器。
     _controller = NoteEditorController(
       services: ref.read(appServicesProvider),
       initialNoteId: widget.noteId,
     );
     _commandShortcutEvents = buildNodeJotCommandShortcutEvents(
-      onSave: _handleManualSave,
       onMarkdownAwarePaste: _handleMarkdownAwarePaste,
     );
     // 异步初始化：加载已有笔记或创建新笔记初始文档。
@@ -72,10 +64,26 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
   @override
   void dispose() {
-    // 释放页面层资源，防止计时器泄漏。
-    _savedHintTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      // 应用切后台/退出前，尽力强制保存一次，降低最后输入丢失风险。
+      unawaited(_saveBeforeAppBackground());
+    }
+  }
+
+  Future<void> _saveBeforeAppBackground() async {
+    if (!mounted || _isClosing || _controller.loadingNotifier.value) {
+      return;
+    }
+    await _controller.saveNow();
   }
 
   /// 统一处理返回动作。
@@ -125,26 +133,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     } finally {
       _isClosing = false;
     }
-  }
-
-  Future<void> _handleManualSave() async {
-    // 手动保存后短暂展示“已保存”反馈，不打断编辑流程。
-    await _controller.saveNow();
-    if (!mounted) {
-      return;
-    }
-    _savedHintTimer?.cancel();
-    setState(() {
-      _showSavedHint = true;
-    });
-    _savedHintTimer = Timer(_savedHintDuration, () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _showSavedHint = false;
-      });
-    });
   }
 
   Future<void> _handleDelete() async {
@@ -272,10 +260,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     final l10n = context.l10n;
-    final strongSaveIconColor =
-        Theme.of(context).brightness == Brightness.dark
-            ? AppColors.textPrimaryDark
-            : AppColors.textPrimary;
     return AppBar(
       title: Text(
         l10n.noteTitle,
@@ -290,32 +274,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
         icon: const Icon(CupertinoIcons.chevron_back),
       ),
       actions: [
-        // 保存按钮：自动保存与手动保存共用同一个 loading 反馈。
-        ValueListenableBuilder<bool>(
-          valueListenable: _controller.autoSavingNotifier,
-          builder: (context, autoSaving, _) {
-            return ValueListenableBuilder<bool>(
-              valueListenable: _controller.savingNotifier,
-              builder: (context, saving, _) {
-                final isBusy = saving || autoSaving;
-                return IconButton(
-                  tooltip: l10n.save,
-                  onPressed: isBusy ? null : _handleManualSave,
-                  icon:
-                      isBusy
-                          ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2.0),
-                          )
-                          : Icon(
-                            Icons.save_outlined,
-                            color: strongSaveIconColor,
-                          ),
-                );
-              },
-            );
-          },
-        ),
         // 删除按钮（危险操作，使用 error 语义色）。
         IconButton(
           tooltip: l10n.delete,
@@ -428,9 +386,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
                 return Stack(
                   children: [
-                    // 主体编辑区域（编辑器或预览）。
+                    // 主体编辑区域。
                     Positioned.fill(child: _buildEditorContent(context)),
-                    // 右下角悬浮状态卡片（字数/已保存）。
+                    // 右下角悬浮状态卡片（字数）。
                     Positioned(
                       right: AppSpacing.l,
                       bottom:
@@ -441,7 +399,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
                           return NoteEditorStatusBadge(
                             savedLabel: l10n.saved,
                             countLabel: l10n.charCountLabel(count),
-                            showSavedHint: _showSavedHint,
+                            showSavedHint: false,
                           );
                         },
                       ),
