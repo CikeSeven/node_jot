@@ -277,7 +277,13 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
             ? AppColors.textPrimaryDark
             : AppColors.textPrimary;
     return AppBar(
-      title: Text(l10n.editNote),
+      title: Text(
+        l10n.noteTitle,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       leading: IconButton(
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
         onPressed: _handleBack,

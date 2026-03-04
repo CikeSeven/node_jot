@@ -58,6 +58,7 @@ class AppLocalizations {
   String get noteConflictTag => _isZh ? '冲突' : 'Conflict';
   String get newNote => _isZh ? '新建笔记' : 'New Note';
   String get editNote => _isZh ? '编辑笔记' : 'Edit Note';
+  String get noteTitle => _isZh ? '笔记' : 'Note';
   String get titleHint => _isZh ? '标题' : 'Title';
   String get markdownHint => _isZh ? '输入笔记...' : 'Type your note...';
   String get editorMode => _isZh ? '编辑' : 'Edit';
