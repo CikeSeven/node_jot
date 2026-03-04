@@ -9,6 +9,10 @@ import 'package:flutter/material.dart';
 List<MobileToolbarItem> buildNodeJotMobileToolbarItems(BuildContext context) {
   return [
     blocksMobileToolbarItem,
+    _unorderedListMobileToolbarItem,
+    _orderedListMobileToolbarItem,
+    _indentMobileToolbarItem,
+    _outdentMobileToolbarItem,
     textDecorationMobileToolbarItem,
     linkMobileToolbarItem,
     todoListMobileToolbarItem,
@@ -33,6 +37,100 @@ final MobileToolbarItem _nodeJotTemplateMobileToolbarItem =
         return _NodeJotTemplateMenu(editorState: editorState);
       },
     );
+
+final MobileToolbarItem _unorderedListMobileToolbarItem =
+    MobileToolbarItem.action(
+      itemIconBuilder: (context, editorState, __) {
+        final selected = _isCurrentNodeType(
+          editorState,
+          BulletedListBlockKeys.type,
+        );
+        final color =
+            selected
+                ? MobileToolbarTheme.of(context).itemHighlightColor
+                : MobileToolbarTheme.of(context).iconColor;
+        return AFMobileIcon(afMobileIcons: AFMobileIcons.bulletedList, color: color);
+      },
+      actionHandler: (_, editorState) {
+        _toggleListType(editorState, BulletedListBlockKeys.type);
+      },
+    );
+
+final MobileToolbarItem _orderedListMobileToolbarItem =
+    MobileToolbarItem.action(
+      itemIconBuilder: (context, editorState, __) {
+        final selected = _isCurrentNodeType(
+          editorState,
+          NumberedListBlockKeys.type,
+        );
+        final color =
+            selected
+                ? MobileToolbarTheme.of(context).itemHighlightColor
+                : MobileToolbarTheme.of(context).iconColor;
+        return AFMobileIcon(afMobileIcons: AFMobileIcons.numberedList, color: color);
+      },
+      actionHandler: (_, editorState) {
+        _toggleListType(editorState, NumberedListBlockKeys.type);
+      },
+    );
+
+final MobileToolbarItem _indentMobileToolbarItem = MobileToolbarItem.action(
+  itemIconBuilder: (context, editorState, __) {
+    final enabled = isIndentable(editorState);
+    final color =
+        enabled
+            ? MobileToolbarTheme.of(context).iconColor
+            : MobileToolbarTheme.of(context).iconColor.withValues(alpha: 0.35);
+    return Icon(Icons.format_indent_increase_rounded, color: color);
+  },
+  actionHandler: (_, editorState) {
+    indentCommand.execute(editorState);
+  },
+);
+
+final MobileToolbarItem _outdentMobileToolbarItem = MobileToolbarItem.action(
+  itemIconBuilder: (context, editorState, __) {
+    final enabled = isOutdentable(editorState);
+    final color =
+        enabled
+            ? MobileToolbarTheme.of(context).iconColor
+            : MobileToolbarTheme.of(context).iconColor.withValues(alpha: 0.35);
+    return Icon(Icons.format_indent_decrease_rounded, color: color);
+  },
+  actionHandler: (_, editorState) {
+    outdentCommand.execute(editorState);
+  },
+);
+
+bool _isCurrentNodeType(EditorState editorState, String type) {
+  final selection = editorState.selection;
+  if (selection == null) {
+    return false;
+  }
+  final node = editorState.getNodeAtPath(selection.start.path);
+  return node?.type == type;
+}
+
+void _toggleListType(EditorState editorState, String listType) {
+  final selection = editorState.selection;
+  if (selection == null) {
+    return;
+  }
+  final firstNode = editorState.getNodeAtPath(selection.start.path);
+  final isSelected = firstNode?.type == listType;
+  editorState.formatNode(
+    selection,
+    (node) => node.copyWith(
+      type: isSelected ? ParagraphBlockKeys.type : listType,
+      attributes: {
+        ParagraphBlockKeys.delta: (node.delta ?? Delta()).toJson(),
+      },
+    ),
+    selectionExtraInfo: {
+      selectionExtraInfoDoNotAttachTextService: true,
+    },
+  );
+}
 
 /// NodeJot 模板节点菜单（手机端工具栏子菜单）。
 class _NodeJotTemplateMenu extends StatelessWidget {
