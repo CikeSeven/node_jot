@@ -41,7 +41,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
   static const Duration _deleteUndoDuration = Duration(seconds: 4);
   static const double _bottomStatusBarHeight = 24;
   static const double _mobileToolbarHeight = 44;
-  static const double _mobileToolbarGap = 8;
 
   /// 编辑页会话控制器，负责加载/保存/删除等业务操作。
   late final NoteEditorController _controller;
@@ -100,7 +99,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     if (!mounted || _isClosing || _controller.loadingNotifier.value) {
       return;
     }
-    await _controller.saveNow();
+    await _controller.saveOnAppLifecycleExit();
   }
 
   /// 统一处理返回动作。

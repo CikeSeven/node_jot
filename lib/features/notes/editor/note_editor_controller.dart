@@ -14,7 +14,7 @@ import '../../../domain/services/sync_engine.dart';
 /// 目标：
 /// - 负责加载/保存/退出清理，避免页面文件承担过多业务逻辑；
 /// - 为 UI 暴露轻量状态（loading/saving/markdown/charCount）；
-/// - 用定时轮询实现自动保存，减少对编辑器内部事件的耦合。
+/// - 使用“文档变更事件 + 防抖”自动保存，避免轮询写库。
 class NoteEditorController {
   NoteEditorController({required this.services, required this.initialNoteId});
 
@@ -24,11 +24,8 @@ class NoteEditorController {
   /// 进入编辑页时传入的目标笔记 ID；`null` 表示新建。
   final String? initialNoteId;
 
-  /// 自动保存轮询间隔。
-  ///
-  /// 当前采用低耦合策略：定时检查文档快照变化，而不是强依赖编辑器事件流。
-  static const Duration _autoSaveInterval = Duration(milliseconds: 700);
-  static const Duration _autoSaveQuietWindow = Duration(milliseconds: 1200);
+  /// 自动保存防抖窗口。
+  static const Duration _saveDebounceWindow = Duration(milliseconds: 800);
 
   /// 页面初始化/加载状态。
   final ValueNotifier<bool> loadingNotifier = ValueNotifier<bool>(true);
@@ -53,11 +50,12 @@ class NoteEditorController {
   /// 编辑器状态对象（由页面拿去渲染 AppFlowyEditor）。
   EditorState? _editorState;
 
-  /// 自动保存轮询定时器。
-  Timer? _autoSaveTimer;
+  /// 自动保存防抖计时器。
+  Timer? _saveDebounceTimer;
 
   /// 当前会话绑定的笔记 ID（新建后会在首次保存后写入）。
   String? _currentNoteId;
+  StreamSubscription<EditorTransactionValue>? _editorTransactionSub;
   StreamSubscription<NoteEntity?>? _currentNoteSub;
   String? _watchingNoteId;
   bool _applyingRemoteOverride = false;
@@ -70,8 +68,12 @@ class NoteEditorController {
   ///
   /// 用于判断“是否发生变化”，避免无意义重复写库。
   String _lastSavedDocJson = '';
-  String? _pendingAutoDocJson;
-  DateTime? _pendingAutoChangedAt;
+  String _lastObservedDocJson = '';
+
+  /// 本次编辑会话是否发生过用户文本改动。
+  ///
+  /// 注意：即使用户后续改回原文，该标记仍保持 true。
+  bool _hasUserEditedInSession = false;
 
   /// 控制器是否已释放。
   bool _disposed = false;
@@ -91,6 +93,7 @@ class NoteEditorController {
   /// 当前会话对应的笔记 ID。
   String? get currentNoteId => _currentNoteId;
   bool get isEditingExistingNote => _openedWithExistingNote;
+  bool get hasUserEditedInSession => _hasUserEditedInSession;
 
   /// 同步键盘可见状态。
   void setKeyboardVisible(bool visible) {
@@ -132,11 +135,8 @@ class NoteEditorController {
       markdownNotifier.value = snapshot.contentMd;
       charCountNotifier.value = _countCharacters(snapshot.contentMd);
       _lastSavedDocJson = existing == null ? '' : snapshot.contentDocJson;
-
-      // 4) 启动自动保存轮询。
-      _autoSaveTimer = Timer.periodic(_autoSaveInterval, (_) {
-        unawaited(saveIfNeeded());
-      });
+      _lastObservedDocJson = snapshot.contentDocJson;
+      _attachEditorChangeListener();
     } catch (e) {
       errorNotifier.value = e.toString();
       AppLog.e('note-editor', 'initialize failed: $e');
@@ -145,17 +145,26 @@ class NoteEditorController {
     }
   }
 
-  /// 手动保存（点击保存按钮触发）。
+  /// 立即保存（离页/生命周期场景）。
   Future<bool> saveNow() async {
-    return _flush(force: true);
+    return _flush(allowWriteWhenSessionEdited: true, showForceSaving: true);
   }
 
-  /// 自动保存入口（仅在内容变化时入库）。
-  Future<bool> saveIfNeeded() async {
-    return _flush(force: false);
+  /// 应用切后台/退出前触发的保存入口。
+  ///
+  /// 仅当本次会话确实发生过用户改动时才会写库。
+  Future<bool> saveOnAppLifecycleExit() async {
+    if (!_hasUserEditedInSession) {
+      return false;
+    }
+    _saveDebounceTimer?.cancel();
+    return _flush(allowWriteWhenSessionEdited: true, showForceSaving: false);
   }
 
-  Future<bool> _flush({required bool force}) async {
+  Future<bool> _flush({
+    required bool allowWriteWhenSessionEdited,
+    required bool showForceSaving,
+  }) async {
     // 基础保护：已释放 / 正在保存 / 无可用编辑器状态时直接返回。
     if (_disposed || _savingInFlight || _applyingRemoteOverride) {
       return false;
@@ -170,23 +179,10 @@ class NoteEditorController {
     charCountNotifier.value = _countCharacters(snapshot.contentMd);
 
     final changed = snapshot.contentDocJson != _lastSavedDocJson;
-    if (!changed && !force) {
-      // 自动保存且无变化时跳过写库。
+    final shouldWrite =
+        changed || (allowWriteWhenSessionEdited && _hasUserEditedInSession);
+    if (!shouldWrite) {
       return false;
-    }
-
-    // 自动保存防抖：内容持续变化时不立即写库，仅在静默窗口后保存。
-    if (!force) {
-      final now = DateTime.now();
-      if (_pendingAutoDocJson != snapshot.contentDocJson) {
-        _pendingAutoDocJson = snapshot.contentDocJson;
-        _pendingAutoChangedAt = now;
-        return false;
-      }
-      final changedAt = _pendingAutoChangedAt ?? now;
-      if (now.difference(changedAt) < _autoSaveQuietWindow) {
-        return false;
-      }
     }
 
     // 新建笔记若被完全清空，则不落库。
@@ -195,13 +191,10 @@ class NoteEditorController {
     }
 
     _savingInFlight = true;
-    final showSavingIndicator = force;
-    if (showSavingIndicator) {
+    if (showForceSaving) {
       savingNotifier.value = true;
     }
-    if (!force) {
-      autoSavingNotifier.value = true;
-    }
+    autoSavingNotifier.value = true;
     errorNotifier.value = null;
     try {
       // 统一通过 syncEngine 落库，确保本地保存与同步日志路径一致。
@@ -214,8 +207,7 @@ class NoteEditorController {
       _currentNoteId = outcome.note.noteId;
       _createdDuringSession = _createdDuringSession || outcome.isNew;
       _lastSavedDocJson = snapshot.contentDocJson;
-      _pendingAutoDocJson = null;
-      _pendingAutoChangedAt = null;
+      _lastObservedDocJson = snapshot.contentDocJson;
       if (previousNoteId != _currentNoteId) {
         _ensureCurrentNoteSubscription();
       }
@@ -226,12 +218,10 @@ class NoteEditorController {
       return false;
     } finally {
       _savingInFlight = false;
-      if (showSavingIndicator) {
+      if (showForceSaving) {
         savingNotifier.value = false;
       }
-      if (!force) {
-        autoSavingNotifier.value = false;
-      }
+      autoSavingNotifier.value = false;
     }
   }
 
@@ -243,6 +233,7 @@ class NoteEditorController {
     if (state == null) {
       return;
     }
+    _saveDebounceTimer?.cancel();
 
     if (_isDocumentEffectivelyEmpty(state.document)) {
       final noteId = _currentNoteId;
@@ -252,8 +243,67 @@ class NoteEditorController {
       return;
     }
 
-    // 离页前做一次强制保存，确保最后输入不会被防抖窗口吞掉。
+    // 本次会话无任何改动，则离页不触发保存。
+    if (!_hasUserEditedInSession) {
+      return;
+    }
+
+    // 离页前做一次即时保存，确保最后输入不会被防抖窗口吞掉。
     await saveNow();
+  }
+
+  void _attachEditorChangeListener() {
+    final state = _editorState;
+    if (state == null) {
+      return;
+    }
+    final previousSub = _editorTransactionSub;
+    if (previousSub != null) {
+      unawaited(previousSub.cancel());
+    }
+    _editorTransactionSub = state.transactionStream.listen((_) {
+      _onEditorDocumentMaybeChanged();
+    });
+  }
+
+  void _detachEditorChangeListener() {
+    final transactionSub = _editorTransactionSub;
+    if (transactionSub != null) {
+      unawaited(transactionSub.cancel());
+    }
+    _editorTransactionSub = null;
+  }
+
+  void _onEditorDocumentMaybeChanged() {
+    if (_disposed || _applyingRemoteOverride) {
+      return;
+    }
+    final state = _editorState;
+    if (state == null) {
+      return;
+    }
+
+    final snapshot = NoteDocCodec.fromDocument(state.document);
+    markdownNotifier.value = snapshot.contentMd;
+    charCountNotifier.value = _countCharacters(snapshot.contentMd);
+
+    // 光标移动/选区变化不应触发保存。
+    if (snapshot.contentDocJson == _lastObservedDocJson) {
+      return;
+    }
+
+    _lastObservedDocJson = snapshot.contentDocJson;
+    _hasUserEditedInSession = true;
+    _scheduleDebouncedSave();
+  }
+
+  void _scheduleDebouncedSave() {
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(_saveDebounceWindow, () {
+      unawaited(
+        _flush(allowWriteWhenSessionEdited: false, showForceSaving: false),
+      );
+    });
   }
 
   /// 删除当前笔记。
@@ -380,8 +430,7 @@ class NoteEditorController {
       markdownNotifier.value = appliedSnapshot.contentMd;
       charCountNotifier.value = _countCharacters(appliedSnapshot.contentMd);
       _lastSavedDocJson = appliedSnapshot.contentDocJson;
-      _pendingAutoDocJson = null;
-      _pendingAutoChangedAt = null;
+      _lastObservedDocJson = appliedSnapshot.contentDocJson;
       AppLog.i('note-editor', 'applied remote update to current editing note');
     } catch (e) {
       AppLog.e('note-editor', 'apply remote update failed: $e');
@@ -469,21 +518,18 @@ class NoteEditorController {
 
   Position? _clampPositionToDocument(Position position, Document document) {
     final clampedPath = _clampPathToDocument(position.path, document);
-    if (clampedPath == null || clampedPath.isEmpty) {
+    if (clampedPath.isEmpty) {
       return null;
     }
     final targetNode = _nodeAtPath(document, clampedPath);
-    if (targetNode == null) {
-      return null;
-    }
     final maxOffset = (targetNode.delta?.toPlainText().length ?? 0);
     final clampedOffset = position.offset.clamp(0, maxOffset).toInt();
     return Position(path: clampedPath, offset: clampedOffset);
   }
 
-  List<int>? _clampPathToDocument(List<int> path, Document document) {
+  List<int> _clampPathToDocument(List<int> path, Document document) {
     if (document.root.children.isEmpty) {
-      return null;
+      return const <int>[];
     }
     // 空路径回退到首个根块，避免后续节点解析失败。
     if (path.isEmpty) {
@@ -508,12 +554,9 @@ class NoteEditorController {
     return result;
   }
 
-  Node? _nodeAtPath(Document document, List<int> path) {
+  Node _nodeAtPath(Document document, List<int> path) {
     Node current = document.root;
     for (final index in path) {
-      if (index < 0 || index >= current.children.length) {
-        return null;
-      }
       current = current.children[index];
     }
     return current;
@@ -522,11 +565,12 @@ class NoteEditorController {
   /// 释放资源。
   void dispose() {
     _disposed = true;
-    _autoSaveTimer?.cancel();
+    _saveDebounceTimer?.cancel();
     final noteSub = _currentNoteSub;
     if (noteSub != null) {
       unawaited(noteSub.cancel());
     }
+    _detachEditorChangeListener();
     _editorState?.dispose();
     loadingNotifier.dispose();
     savingNotifier.dispose();
