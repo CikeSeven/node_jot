@@ -529,7 +529,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                 if (index == 0) {
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: AppSpacing.l,
+                                      horizontal: AppSpacing.m,
                                     ),
                                     child: Row(
                                       children: [
@@ -559,7 +559,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                 if (notes.isEmpty) {
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: AppSpacing.l,
+                                      horizontal: AppSpacing.m,
                                     ),
                                     child: _EmptyState(onCreate: _openEditor),
                                   );
@@ -571,7 +571,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                 );
                                 Widget card = Padding(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: AppSpacing.l,
+                                    horizontal: AppSpacing.m,
                                   ),
                                   child: _NoteCard(
                                     note: note,
@@ -676,7 +676,7 @@ class _SwipeActionBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
       padding: const EdgeInsets.symmetric(horizontal: 18),
       alignment: Alignment.centerRight,
       decoration: BoxDecoration(
@@ -740,7 +740,7 @@ class _NoteCard extends StatelessWidget {
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

@@ -316,7 +316,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
       title: Text(
         l10n.noteTitle,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontSize: 16,
+          fontSize: 20,
           fontWeight: FontWeight.w600,
         ),
       ),
