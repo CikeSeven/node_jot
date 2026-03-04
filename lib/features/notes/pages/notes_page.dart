@@ -36,6 +36,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   final Set<String> _selectedNoteIds = <String>{};
   final Set<String> _optimisticHiddenNoteIds = <String>{};
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   Timer? _searchDebounceTimer;
   String _searchInput = '';
   String _effectiveSearchKeyword = '';
@@ -45,6 +46,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   @override
   void dispose() {
     _searchDebounceTimer?.cancel();
+    _searchFocusNode.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -161,8 +163,22 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 
   void _openEditor([String? noteId]) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)),
+    _searchFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    unawaited(
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute<void>(
+              builder: (_) => NoteEditorPage(noteId: noteId),
+            ),
+          )
+          .then((_) {
+            if (!mounted) {
+              return;
+            }
+            _searchFocusNode.unfocus();
+            FocusManager.instance.primaryFocus?.unfocus();
+          }),
     );
   }
 
@@ -411,6 +427,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         useSideRail ? 16.0 : 112 + MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           PopScope(
@@ -512,6 +529,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                           // 区块二：主列表区域（含标题行、空态、笔记卡片）。
                           NotesListSection(
                             searchController: _searchController,
+                            searchFocusNode: _searchFocusNode,
                             notes: notes,
                             searchText: _searchInput,
                             selectedNoteIds: _selectedNoteIds,

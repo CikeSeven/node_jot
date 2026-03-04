@@ -20,6 +20,7 @@ class NotesListSection extends StatelessWidget {
   const NotesListSection({
     super.key,
     required this.searchController,
+    required this.searchFocusNode,
     required this.notes,
     required this.searchText,
     required this.selectedNoteIds,
@@ -36,6 +37,7 @@ class NotesListSection extends StatelessWidget {
   });
 
   final TextEditingController searchController;
+  final FocusNode searchFocusNode;
   final List<NoteEntity> notes;
   final String searchText;
   final Set<String> selectedNoteIds;
@@ -69,6 +71,7 @@ class NotesListSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
               child: TextField(
                 controller: searchController,
+                focusNode: searchFocusNode,
                 onChanged: onSearchChanged,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(

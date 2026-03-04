@@ -120,6 +120,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
     // 桌面布局：左侧导航栏 + 右侧页面区域。
     if (useSideRail) {
       return Scaffold(
+        resizeToAvoidBottomInset: false,
         body: SafeArea(
           child: Row(
             children: [
@@ -141,6 +142,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
 
     // 移动布局：内容层 + 悬浮底部导航。
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           _buildPageView(pages),
