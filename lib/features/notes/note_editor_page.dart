@@ -348,6 +348,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     }
 
     final editorStyle = _buildEditorStyle(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final keyboardVisible = keyboardInset > 0;
     final bottomPadding =
@@ -374,9 +375,35 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     );
 
     if (_isMobileRuntime) {
+      final toolbarBackground =
+          isDark
+              ? AppColors.surfaceDark.withValues(alpha: 0.96)
+              : AppColors.surface.withValues(alpha: 0.96);
+      final toolbarForeground =
+          isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+      final toolbarIcon =
+          isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
+      final toolbarHighlight = isDark ? AppColors.accent : AppColors.navActiveText;
+      final toolbarOutline = isDark ? AppColors.borderSoftDark : AppColors.borderSoft;
+      final tabSelectedBackground = toolbarHighlight.withValues(
+        alpha: isDark ? 0.26 : 0.14,
+      );
+      final tabSelectedForeground =
+          isDark ? AppColors.textPrimaryDark : AppColors.navActiveLabel;
       editor = MobileToolbarV2(
         editorState: state,
         toolbarItems: buildNodeJotMobileToolbarItems(context),
+        backgroundColor: toolbarBackground,
+        foregroundColor: toolbarForeground,
+        iconColor: toolbarIcon,
+        itemHighlightColor: toolbarHighlight,
+        itemOutlineColor: toolbarOutline,
+        outlineColor: toolbarOutline,
+        primaryColor: toolbarHighlight,
+        onPrimaryColor:
+            isDark ? AppColors.textPrimaryDark : AppColors.surface,
+        tabBarSelectedBackgroundColor: tabSelectedBackground,
+        tabBarSelectedForegroundColor: tabSelectedForeground,
         toolbarHeight: _mobileToolbarHeight,
         child: editor,
       );
