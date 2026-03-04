@@ -355,11 +355,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     _controller.setKeyboardVisible(keyboardVisible);
     final bottomPadding =
         keyboardVisible
-            ? keyboardInset +
-                AppSpacing.s +
-                (_isMobileRuntime
-                    ? _mobileToolbarHeight + _mobileToolbarGap
-                    : 0)
+            // MobileToolbarV2 会处理工具栏自身占位，这里仅补键盘抬升高度，
+            // 避免工具栏高度在两层重复叠加导致底部出现空白带。
+            ? keyboardInset + AppSpacing.s
             : _bottomStatusBarHeight +
                 MediaQuery.paddingOf(context).bottom +
                 AppSpacing.l;
