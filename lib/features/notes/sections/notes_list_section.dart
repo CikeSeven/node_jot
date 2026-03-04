@@ -19,11 +19,15 @@ import '../widgets/swipe_action_background.dart';
 class NotesListSection extends StatelessWidget {
   const NotesListSection({
     super.key,
+    required this.searchController,
     required this.notes,
+    required this.searchText,
     required this.selectedNoteIds,
     required this.isSelectionMode,
     required this.listBottomOffset,
     required this.desktopContextMenuEnabled,
+    required this.onSearchChanged,
+    required this.onClearSearch,
     required this.onCreate,
     required this.onOpenEditor,
     required this.onToggleSelection,
@@ -31,11 +35,15 @@ class NotesListSection extends StatelessWidget {
     required this.onArchiveBySwipe,
   });
 
+  final TextEditingController searchController;
   final List<NoteEntity> notes;
+  final String searchText;
   final Set<String> selectedNoteIds;
   final bool isSelectionMode;
   final double listBottomOffset;
   final bool desktopContextMenuEnabled;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onClearSearch;
   final VoidCallback onCreate;
   final ValueChanged<String?> onOpenEditor;
   final void Function(String noteId, bool forceSelect) onToggleSelection;
@@ -50,13 +58,37 @@ class NotesListSection extends StatelessWidget {
       child: ListView.separated(
         key: const PageStorageKey<String>('notes_list'),
         padding: EdgeInsets.only(bottom: listBottomOffset),
-        itemCount: notes.isEmpty ? 2 : notes.length + 1,
+        itemCount: notes.isEmpty ? 3 : notes.length + 2,
         separatorBuilder: (context, index) {
           return SizedBox(height: 8);
         },
         itemBuilder: (context, index) {
-          // 区块一：列表标题行（固定在列表第一项，随列表滚动）。
+          // 区块一：搜索框（列表顶部，随列表滚动）。
           if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+              child: TextField(
+                controller: searchController,
+                onChanged: onSearchChanged,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: l10n.searchNotesHint,
+                  prefixIcon: const Icon(CupertinoIcons.search),
+                  suffixIcon:
+                      searchText.isEmpty
+                          ? null
+                          : IconButton(
+                            tooltip: l10n.cancel,
+                            onPressed: onClearSearch,
+                            icon: const Icon(CupertinoIcons.clear_circled_solid),
+                          ),
+                ),
+              ),
+            );
+          }
+
+          // 区块二：列表标题行（位于搜索框下方，随列表滚动）。
+          if (index == 1) {
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
               child: Row(
@@ -76,7 +108,7 @@ class NotesListSection extends StatelessWidget {
             );
           }
 
-          // 区块二：空状态。
+          // 区块三：空状态。
           if (notes.isEmpty) {
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
@@ -84,8 +116,8 @@ class NotesListSection extends StatelessWidget {
             );
           }
 
-          // 区块三：普通笔记卡片。
-          final note = notes[index - 1];
+          // 区块四：普通笔记卡片。
+          final note = notes[index - 2];
           final selected = selectedNoteIds.contains(note.noteId);
 
           Widget card = Padding(

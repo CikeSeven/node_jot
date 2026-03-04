@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,11 +31,23 @@ class NotesPage extends ConsumerStatefulWidget {
 class _NotesPageState extends ConsumerState<NotesPage> {
   static const Duration _deleteUndoSnackDuration = Duration(seconds: 4);
   static const Duration _restoreHintDuration = Duration(seconds: 2);
+  static const Duration _searchDebounceDuration = Duration(milliseconds: 200);
 
   final Set<String> _selectedNoteIds = <String>{};
   final Set<String> _optimisticHiddenNoteIds = <String>{};
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounceTimer;
+  String _searchInput = '';
+  String _effectiveSearchKeyword = '';
 
   bool get _isSelectionMode => _selectedNoteIds.isNotEmpty;
+
+  @override
+  void dispose() {
+    _searchDebounceTimer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _clearSelection() {
     if (_selectedNoteIds.isEmpty) {
@@ -150,6 +164,40 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => NoteEditorPage(noteId: noteId)),
     );
+  }
+
+  void _onSearchChanged(String value) {
+    if (_searchInput != value) {
+      setState(() {
+        _searchInput = value;
+      });
+    }
+
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(_searchDebounceDuration, () {
+      if (!mounted) {
+        return;
+      }
+      final normalized = _searchInput.trim();
+      if (normalized == _effectiveSearchKeyword) {
+        return;
+      }
+      setState(() {
+        _effectiveSearchKeyword = normalized;
+      });
+    });
+  }
+
+  void _clearSearch() {
+    if (_searchInput.isEmpty && _effectiveSearchKeyword.isEmpty) {
+      return;
+    }
+    _searchDebounceTimer?.cancel();
+    _searchController.clear();
+    setState(() {
+      _searchInput = '';
+      _effectiveSearchKeyword = '';
+    });
   }
 
   Future<void> _archiveSingleNote({
@@ -391,7 +439,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 ),
                 child: SafeArea(
                   child: StreamBuilder<List<NoteEntity>>(
-                    stream: services.noteRepository.watchActiveNotes(),
+                    stream: services.noteRepository.watchActiveNotesByKeyword(
+                      _effectiveSearchKeyword,
+                    ),
                     builder: (context, snapshot) {
                       final rawNotes = snapshot.data ?? const <NoteEntity>[];
                       final activeIds =
@@ -461,11 +511,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                           const SizedBox(height: AppSpacing.s),
                           // 区块二：主列表区域（含标题行、空态、笔记卡片）。
                           NotesListSection(
+                            searchController: _searchController,
                             notes: notes,
+                            searchText: _searchInput,
                             selectedNoteIds: _selectedNoteIds,
                             isSelectionMode: _isSelectionMode,
                             listBottomOffset: listBottomOffset,
                             desktopContextMenuEnabled: desktopContextMenuEnabled,
+                            onSearchChanged: _onSearchChanged,
+                            onClearSearch: _clearSearch,
                             onCreate: _openEditor,
                             onOpenEditor: _openEditor,
                             onToggleSelection:

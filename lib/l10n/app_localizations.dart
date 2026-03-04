@@ -54,6 +54,7 @@ class AppLocalizations {
     return DateFormat('yyyy-MM-dd').format(dateTime.toLocal());
   }
   String get noNotesYet => _isZh ? '还没有笔记' : 'No notes yet';
+  String get searchNotesHint => _isZh ? '搜索笔记...' : 'Search notes...';
   String get createNote => _isZh ? '新建笔记' : 'Create Note';
   String get noteConflictTag => _isZh ? '冲突' : 'Conflict';
   String get newNote => _isZh ? '新建笔记' : 'New Note';

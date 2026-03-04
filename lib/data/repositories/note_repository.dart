@@ -44,6 +44,51 @@ class NoteRepository {
     });
   }
 
+  /// 按关键词监听未删除笔记（标题 + 正文）。
+  ///
+  /// 说明：
+  /// - 关键词为空时，直接回退到 [watchActiveNotes]；
+  /// - 非空时使用 Isar 的 `contains` 查询方法分别检索标题和正文，
+  ///   再按 `noteId` 去重后按更新时间倒序返回。
+  Stream<List<NoteEntity>> watchActiveNotesByKeyword(String keyword) {
+    final normalized = keyword.trim();
+    if (normalized.isEmpty) {
+      return watchActiveNotes();
+    }
+
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) async {
+      final titleHits =
+          await _db.noteEntitys
+              .where()
+              .filter()
+              .deletedAtIsNull()
+              .archivedAtIsNull()
+              .titleContains(normalized, caseSensitive: false)
+              .findAll();
+
+      final contentHits =
+          await _db.noteEntitys
+              .where()
+              .filter()
+              .deletedAtIsNull()
+              .archivedAtIsNull()
+              .contentMdContains(normalized, caseSensitive: false)
+              .findAll();
+
+      final dedup = <String, NoteEntity>{};
+      for (final note in titleHits) {
+        dedup[note.noteId] = note;
+      }
+      for (final note in contentHits) {
+        dedup[note.noteId] = note;
+      }
+
+      final result = dedup.values.toList(growable: false)
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      return result;
+    });
+  }
+
   /// 监听已归档且未删除的笔记（按更新时间倒序）。
   Stream<List<NoteEntity>> watchArchivedNotes() {
     return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) {
