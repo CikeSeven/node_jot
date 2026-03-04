@@ -31,6 +31,22 @@ class NodeJotApp extends ConsumerWidget {
               theme: AppTheme.light(),
               darkTheme: AppTheme.dark(),
               themeMode: themeMode,
+              builder: (context, child) {
+                final platformBrightness = MediaQuery.platformBrightnessOf(
+                  context,
+                );
+                final effectiveBrightness =
+                    themeMode == ThemeMode.system
+                        ? platformBrightness
+                        : (themeMode == ThemeMode.dark
+                            ? Brightness.dark
+                            : Brightness.light);
+
+                return AnnotatedRegion(
+                  value: AppTheme.overlayStyleForBrightness(effectiveBrightness),
+                  child: child ?? const SizedBox.shrink(),
+                );
+              },
               locale: effectiveLocale,
               supportedLocales: const [
                 Locale('en'),

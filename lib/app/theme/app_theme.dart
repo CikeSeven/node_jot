@@ -1,11 +1,35 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
 import 'app_radii.dart';
 
 /// 应用主题构建器。
 class AppTheme {
+  /// 浅色主题状态栏样式（深色图标 + 透明背景）。
+  static const SystemUiOverlayStyle lightSystemUiOverlayStyle =
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      );
+
+  /// 深色主题状态栏样式（浅色图标 + 透明背景）。
+  static const SystemUiOverlayStyle darkSystemUiOverlayStyle =
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      );
+
+  /// 按亮暗主题返回对应状态栏样式。
+  static SystemUiOverlayStyle overlayStyleForBrightness(Brightness brightness) {
+    return brightness == Brightness.dark
+        ? darkSystemUiOverlayStyle
+        : lightSystemUiOverlayStyle;
+  }
+
   /// 浅色主题（当前唯一主题）。
   static ThemeData light() {
     final colorScheme = ColorScheme.fromSeed(
@@ -46,6 +70,7 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimary,
         centerTitle: false,
+        systemOverlayStyle: lightSystemUiOverlayStyle,
       ),
       cardTheme: CardThemeData(
         color: AppColors.surface,
@@ -132,6 +157,7 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimaryDark,
         centerTitle: false,
+        systemOverlayStyle: darkSystemUiOverlayStyle,
       ),
       cardTheme: CardThemeData(
         color: AppColors.surfaceDark,
