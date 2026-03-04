@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
@@ -351,6 +352,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final keyboardVisible = keyboardInset > 0;
+    _controller.setKeyboardVisible(keyboardVisible);
     final bottomPadding =
         keyboardVisible
             ? keyboardInset +
@@ -383,8 +385,10 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
           isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
       final toolbarIcon =
           isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
-      final toolbarHighlight = isDark ? AppColors.accent : AppColors.navActiveText;
-      final toolbarOutline = isDark ? AppColors.borderSoftDark : AppColors.borderSoft;
+      final toolbarHighlight =
+          isDark ? AppColors.accent : AppColors.navActiveText;
+      final toolbarOutline =
+          isDark ? AppColors.borderSoftDark : AppColors.borderSoft;
       final tabSelectedBackground = toolbarHighlight.withValues(
         alpha: isDark ? 0.26 : 0.14,
       );
@@ -400,8 +404,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         itemOutlineColor: toolbarOutline,
         outlineColor: toolbarOutline,
         primaryColor: toolbarHighlight,
-        onPrimaryColor:
-            isDark ? AppColors.textPrimaryDark : AppColors.surface,
+        onPrimaryColor: isDark ? AppColors.textPrimaryDark : AppColors.surface,
         tabBarSelectedBackgroundColor: tabSelectedBackground,
         tabBarSelectedForegroundColor: tabSelectedForeground,
         toolbarHeight: _mobileToolbarHeight,
@@ -435,8 +438,10 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         isDark
             ? AppColors.surfaceDark.withValues(alpha: 0.9)
             : AppColors.surface.withValues(alpha: 0.9);
-    final borderColor = isDark ? AppColors.borderSoftDark : AppColors.borderSoft;
-    final textColor = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final borderColor =
+        isDark ? AppColors.borderSoftDark : AppColors.borderSoft;
+    final textColor =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
     return IgnorePointer(

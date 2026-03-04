@@ -286,7 +286,6 @@ class SyncEngine {
   Future<SaveNoteOutcome> saveLocalNote({
     String? noteId,
     required String contentDocJson,
-    int? expectedHeadRevision,
     SaveTriggerSource source = SaveTriggerSource.localUser,
   }) async {
     final profile = _localDeviceService.profile;
@@ -294,7 +293,6 @@ class SyncEngine {
       noteId: noteId,
       contentDocJson: contentDocJson,
       editorDeviceId: profile.deviceId,
-      expectedHeadRevision: expectedHeadRevision,
     );
 
     final lamport = await _nextLamport();
@@ -1354,37 +1352,21 @@ class SyncEngine {
       return false;
     }
 
-    if (op.opType == 'delete') {
-      final payload = op.payload;
-      final deletedAtRaw = payload['deletedAt'] as String?;
-      final deletedAt =
-          deletedAtRaw == null
-              ? DateTime.now().toUtc()
-              : DateTime.parse(deletedAtRaw).toUtc();
-
-      await _noteRepository.softDeleteRemoteNote(
-        noteId: op.noteId,
-        deletedAt: deletedAt,
-        editorDeviceId: payload['lastEditorDeviceId'] as String,
-        baseRevision: payload['baseRevision'] as int,
-        headRevision: payload['headRevision'] as int,
+    final schema = (op.payload['schemaVersion'] as int?) ?? 1;
+    if (schema < 2) {
+      AppLog.w(
+        'sync-engine',
+        'skip op ${op.opId}: unsupported note schema version $schema',
       );
-    } else {
-      final schema = (op.payload['schemaVersion'] as int?) ?? 1;
-      if (schema < 2) {
-        AppLog.w(
-          'sync-engine',
-          'skip op ${op.opId}: unsupported note schema version $schema',
-        );
-        return false;
-      }
-      final outcome = await _noteRepository.applyRemoteSnapshot(op.payload);
-      if (outcome.hasInlineConflict) {
-        AppLog.w(
-          'sync-engine',
-          'inline conflict inserted for note ${outcome.noteId} from op ${op.opId}',
-        );
-      }
+      return false;
+    }
+
+    final outcome = await _noteRepository.applyRemoteSnapshot(op.payload);
+    if (!outcome.applied) {
+      AppLog.i(
+        'sync-engine',
+        'skip stale op ${op.opId} for note ${outcome.noteId}',
+      );
     }
 
     await _opLogRepository.appendOperation(op);
