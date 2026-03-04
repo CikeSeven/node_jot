@@ -16,7 +16,6 @@ import '../../core/utils/note_doc_codec.dart';
 import '../../l10n/app_localizations.dart';
 import 'editor/note_editor_controller.dart';
 import 'editor/note_editor_extensions.dart';
-import 'editor/widgets/note_editor_status_badge.dart';
 
 /// 笔记编辑页（AppFlowy 版本）。
 ///
@@ -37,6 +36,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     with WidgetsBindingObserver {
   /// 删除后支持撤销的有效时长（对应 SnackBar duration）。
   static const Duration _deleteUndoDuration = Duration(seconds: 4);
+  static const double _bottomStatusBarHeight = 24;
 
   /// 编辑页会话控制器，负责加载/保存/删除等业务操作。
   late final NoteEditorController _controller;
@@ -331,14 +331,16 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     }
 
     final editorStyle = _buildEditorStyle(context);
+    final bottomPadding =
+        _bottomStatusBarHeight + MediaQuery.paddingOf(context).bottom + AppSpacing.l;
 
     // 单一编辑态：渲染 AppFlowyEditor，并套用 NodeJot 主题样式。
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.l,
         AppSpacing.s,
         AppSpacing.l,
-        AppSpacing.m,
+        bottomPadding,
       ),
       child: NotificationListener<UserScrollNotification>(
         onNotification: _handleEditorUserScroll,
@@ -352,6 +354,59 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
             brightness: Theme.of(context).brightness,
           ),
           shrinkWrap: false,
+        ),
+      ),
+    );
+  }
+
+  /// 底部悬浮状态条：
+  /// - 始终覆盖在滚动内容上方；
+  /// - 右侧仅展示小字号字数统计；
+  /// - 不参与点击事件，避免挡住编辑区手势。
+  Widget _buildBottomStatusBar(BuildContext context) {
+    final l10n = context.l10n;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor =
+        isDark
+            ? AppColors.surfaceDark.withValues(alpha: 0.9)
+            : AppColors.surface.withValues(alpha: 0.9);
+    final borderColor = isDark ? AppColors.borderSoftDark : AppColors.borderSoft;
+    final textColor = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+
+    return IgnorePointer(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Container(
+          height: _bottomStatusBarHeight + safeBottom,
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.l,
+            4,
+            AppSpacing.l,
+            4 + safeBottom,
+          ),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            border: Border(top: BorderSide(color: borderColor, width: 0.8)),
+          ),
+          child: Row(
+            children: [
+              const Spacer(),
+              ValueListenableBuilder<int>(
+                valueListenable: _controller.charCountNotifier,
+                builder: (context, count, _) {
+                  return Text(
+                    l10n.charCountLabel(count),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: textColor,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -399,7 +454,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     return PopScope<void>(
       // 自定义返回流程，确保先执行保存/清理，再 pop 页面。
       canPop: false,
@@ -409,6 +463,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         appBar: _buildAppBar(context),
         body: Container(
           decoration: BoxDecoration(
@@ -427,22 +482,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
                   children: [
                     // 主体编辑区域。
                     Positioned.fill(child: _buildEditorContent(context)),
-                    // 右下角悬浮状态卡片（字数）。
-                    Positioned(
-                      right: AppSpacing.l,
-                      bottom:
-                          AppSpacing.l + MediaQuery.paddingOf(context).bottom,
-                      child: ValueListenableBuilder<int>(
-                        valueListenable: _controller.charCountNotifier,
-                        builder: (context, count, _) {
-                          return NoteEditorStatusBadge(
-                            savedLabel: l10n.saved,
-                            countLabel: l10n.charCountLabel(count),
-                            showSavedHint: false,
-                          );
-                        },
-                      ),
-                    ),
+                    _buildBottomStatusBar(context),
                   ],
                 );
               },
