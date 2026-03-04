@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -45,6 +46,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
 
   /// 防止重复触发返回逻辑（例如系统返回与按钮返回同时触发）。
   bool _isClosing = false;
+
+  /// 用户连续滚动期间仅清理一次折叠光标，避免频繁触发选区变更造成闪烁。
+  bool _selectionClearedByUserScroll = false;
 
   @override
   void initState() {
@@ -258,6 +262,37 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     }
   }
 
+  /// 处理编辑器滚动通知。
+  ///
+  /// AppFlowy 在选区变化后会自动尝试把光标滚动到可见区域；
+  /// 当长文档滚动时若当前光标在顶部，可能触发视图被“回拉”。
+  /// 这里在用户主动滚动时清理折叠光标（不影响文本选区），
+  /// 用于避免阅读场景下的自动回跳。
+  bool _handleEditorUserScroll(UserScrollNotification notification) {
+    final state = _controller.editorState;
+    if (state == null) {
+      return false;
+    }
+
+    if (notification.direction == ScrollDirection.idle) {
+      _selectionClearedByUserScroll = false;
+      return false;
+    }
+
+    if (_selectionClearedByUserScroll) {
+      return false;
+    }
+
+    final selection = state.selection;
+    if (selection == null || !selection.isCollapsed) {
+      return false;
+    }
+
+    state.selection = null;
+    _selectionClearedByUserScroll = true;
+    return false;
+  }
+
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     final l10n = context.l10n;
     return AppBar(
@@ -305,15 +340,19 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         AppSpacing.l,
         AppSpacing.m,
       ),
-      child: AppFlowyEditor(
-        editorState: state,
-        autoFocus: true,
-        editorStyle: editorStyle,
-        commandShortcutEvents: _commandShortcutEvents,
-        characterShortcutEvents: buildNodeJotCharacterShortcutEvents(
-          brightness: Theme.of(context).brightness,
+      child: NotificationListener<UserScrollNotification>(
+        onNotification: _handleEditorUserScroll,
+        child: AppFlowyEditor(
+          editorState: state,
+          // 仅新建笔记自动聚焦；已有长笔记默认不抢光标，减少滚动回跳。
+          autoFocus: widget.noteId == null,
+          editorStyle: editorStyle,
+          commandShortcutEvents: _commandShortcutEvents,
+          characterShortcutEvents: buildNodeJotCharacterShortcutEvents(
+            brightness: Theme.of(context).brightness,
+          ),
+          shrinkWrap: false,
         ),
-        shrinkWrap: false,
       ),
     );
   }
