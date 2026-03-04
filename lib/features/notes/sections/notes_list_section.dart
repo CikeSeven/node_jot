@@ -87,9 +87,9 @@ class NotesListSection extends StatelessWidget {
             final targetHeight = showSearchRow ? 48.0 : 0.0;
 
             return Padding(
-              key: searchFieldKey,
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
               child: AnimatedContainer(
+                key: searchFieldKey,
                 duration:
                     animateSearchRow
                         ? _searchRowAnimationDuration
