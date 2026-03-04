@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 /// - 增加一个 NodeJot 自定义“模板节点”菜单，用于一键插入常用内容结构。
 List<MobileToolbarItem> buildNodeJotMobileToolbarItems(BuildContext context) {
   return [
+    _undoMobileToolbarItem,
+    _redoMobileToolbarItem,
     blocksMobileToolbarItem,
     _unorderedListMobileToolbarItem,
     _orderedListMobileToolbarItem,
@@ -20,6 +22,60 @@ List<MobileToolbarItem> buildNodeJotMobileToolbarItems(BuildContext context) {
     quoteMobileToolbarItem,
     _nodeJotTemplateMobileToolbarItem,
   ];
+}
+
+/// 撤销按钮。
+final MobileToolbarItem _undoMobileToolbarItem = MobileToolbarItem.action(
+  itemIconBuilder: (context, editorState, __) {
+    final enabled = _canUndo(editorState);
+    return Icon(
+      Icons.undo_rounded,
+      color:
+          enabled
+              ? MobileToolbarTheme.of(context).iconColor
+              : MobileToolbarTheme.of(context).iconColor.withValues(
+                alpha: 0.35,
+              ),
+    );
+  },
+  actionHandler: (_, editorState) {
+    if (!_canUndo(editorState)) {
+      return;
+    }
+    undoCommand.execute(editorState);
+  },
+);
+
+/// 重做按钮。
+final MobileToolbarItem _redoMobileToolbarItem = MobileToolbarItem.action(
+  itemIconBuilder: (context, editorState, __) {
+    final enabled = _canRedo(editorState);
+    return Icon(
+      Icons.redo_rounded,
+      color:
+          enabled
+              ? MobileToolbarTheme.of(context).iconColor
+              : MobileToolbarTheme.of(context).iconColor.withValues(
+                alpha: 0.35,
+              ),
+    );
+  },
+  actionHandler: (_, editorState) {
+    if (!_canRedo(editorState)) {
+      return;
+    }
+    redoCommand.execute(editorState);
+  },
+);
+
+bool _canUndo(EditorState editorState) {
+  // 判断是否可以撤销。
+  return !editorState.undoManager.undoStack.isEmpty;
+}
+
+bool _canRedo(EditorState editorState) {
+  // 判断是否可以重做。
+  return !editorState.undoManager.redoStack.isEmpty;
 }
 
 final MobileToolbarItem _nodeJotTemplateMobileToolbarItem =

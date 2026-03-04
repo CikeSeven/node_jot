@@ -52,7 +52,7 @@ class NotesListSection extends StatelessWidget {
         padding: EdgeInsets.only(bottom: listBottomOffset),
         itemCount: notes.isEmpty ? 2 : notes.length + 1,
         separatorBuilder: (context, index) {
-          return SizedBox(height: index == 0 ? 5 : 8);
+          return SizedBox(height: 8);
         },
         itemBuilder: (context, index) {
           // 区块一：列表标题行（固定在列表第一项，随列表滚动）。

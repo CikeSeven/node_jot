@@ -458,7 +458,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                   ),
                                 ),
                           ),
-                          const SizedBox(height: AppSpacing.m),
+                          const SizedBox(height: AppSpacing.s),
                           // 区块二：主列表区域（含标题行、空态、笔记卡片）。
                           NotesListSection(
                             notes: notes,
