@@ -472,7 +472,7 @@ class NoteEditorController {
     // 键盘弹起且之前存在选区时恢复光标（含路径/偏移裁剪，防止越界）。
     if (shouldRestoreSelection) {
       final clampedSelection = _clampSelectionToDocument(
-        previousSelection!,
+        previousSelection,
         state.document,
       );
       state.selection = clampedSelection;
