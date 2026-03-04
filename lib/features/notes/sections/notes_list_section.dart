@@ -52,13 +52,13 @@ class NotesListSection extends StatelessWidget {
         padding: EdgeInsets.only(bottom: listBottomOffset),
         itemCount: notes.isEmpty ? 2 : notes.length + 1,
         separatorBuilder: (context, index) {
-          return SizedBox(height: index == 0 ? 8 : 10);
+          return SizedBox(height: index == 0 ? 5 : 8);
         },
         itemBuilder: (context, index) {
           // 区块一：列表标题行（固定在列表第一项，随列表滚动）。
           if (index == 0) {
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
               child: Row(
                 children: [
                   Expanded(
