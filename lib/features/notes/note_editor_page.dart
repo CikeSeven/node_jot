@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
@@ -16,6 +17,7 @@ import '../../core/utils/note_doc_codec.dart';
 import '../../l10n/app_localizations.dart';
 import 'editor/note_editor_controller.dart';
 import 'editor/note_editor_extensions.dart';
+import 'editor/note_editor_mobile_toolbar.dart';
 
 /// 笔记编辑页（AppFlowy 版本）。
 ///
@@ -37,6 +39,8 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
   /// 删除后支持撤销的有效时长（对应 SnackBar duration）。
   static const Duration _deleteUndoDuration = Duration(seconds: 4);
   static const double _bottomStatusBarHeight = 24;
+  static const double _mobileToolbarHeight = 44;
+  static const double _mobileToolbarGap = 8;
 
   /// 编辑页会话控制器，负责加载/保存/删除等业务操作。
   late final NoteEditorController _controller;
@@ -49,6 +53,14 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
 
   /// 用户连续滚动期间仅清理一次折叠光标，避免频繁触发选区变更造成闪烁。
   bool _selectionClearedByUserScroll = false;
+
+  bool get _isMobileRuntime {
+    if (kIsWeb) {
+      return false;
+    }
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   @override
   void initState() {
@@ -274,6 +286,11 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
       return false;
     }
 
+    // 键盘弹起时保持选区，避免干扰输入与键盘工具栏状态。
+    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
+      return false;
+    }
+
     if (notification.direction == ScrollDirection.idle) {
       _selectionClearedByUserScroll = false;
       return false;
@@ -331,8 +348,39 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     }
 
     final editorStyle = _buildEditorStyle(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardVisible = keyboardInset > 0;
     final bottomPadding =
-        _bottomStatusBarHeight + MediaQuery.paddingOf(context).bottom + AppSpacing.l;
+        keyboardVisible
+            ? keyboardInset +
+                AppSpacing.s +
+                (_isMobileRuntime
+                    ? _mobileToolbarHeight + _mobileToolbarGap
+                    : 0)
+            : _bottomStatusBarHeight +
+                MediaQuery.paddingOf(context).bottom +
+                AppSpacing.l;
+
+    Widget editor = AppFlowyEditor(
+      editorState: state,
+      // 仅新建笔记自动聚焦；已有长笔记默认不抢光标，减少滚动回跳。
+      autoFocus: widget.noteId == null,
+      editorStyle: editorStyle,
+      commandShortcutEvents: _commandShortcutEvents,
+      characterShortcutEvents: buildNodeJotCharacterShortcutEvents(
+        brightness: Theme.of(context).brightness,
+      ),
+      shrinkWrap: false,
+    );
+
+    if (_isMobileRuntime) {
+      editor = MobileToolbarV2(
+        editorState: state,
+        toolbarItems: buildNodeJotMobileToolbarItems(context),
+        toolbarHeight: _mobileToolbarHeight,
+        child: editor,
+      );
+    }
 
     // 单一编辑态：渲染 AppFlowyEditor，并套用 NodeJot 主题样式。
     return Padding(
@@ -344,17 +392,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
       ),
       child: NotificationListener<UserScrollNotification>(
         onNotification: _handleEditorUserScroll,
-        child: AppFlowyEditor(
-          editorState: state,
-          // 仅新建笔记自动聚焦；已有长笔记默认不抢光标，减少滚动回跳。
-          autoFocus: widget.noteId == null,
-          editorStyle: editorStyle,
-          commandShortcutEvents: _commandShortcutEvents,
-          characterShortcutEvents: buildNodeJotCharacterShortcutEvents(
-            brightness: Theme.of(context).brightness,
-          ),
-          shrinkWrap: false,
-        ),
+        child: editor,
       ),
     );
   }
@@ -478,11 +516,14 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
                   return const Center(child: CircularProgressIndicator());
                 }
 
+                final keyboardVisible =
+                    MediaQuery.viewInsetsOf(context).bottom > 0;
+
                 return Stack(
                   children: [
                     // 主体编辑区域。
                     Positioned.fill(child: _buildEditorContent(context)),
-                    _buildBottomStatusBar(context),
+                    if (!keyboardVisible) _buildBottomStatusBar(context),
                   ],
                 );
               },
