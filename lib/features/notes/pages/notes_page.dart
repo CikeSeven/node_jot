@@ -28,23 +28,49 @@ class NotesPage extends ConsumerStatefulWidget {
   ConsumerState<NotesPage> createState() => _NotesPageState();
 }
 
-class _NotesPageState extends ConsumerState<NotesPage> {
+class _NotesPageState extends ConsumerState<NotesPage>
+    with SingleTickerProviderStateMixin {
   static const Duration _deleteUndoSnackDuration = Duration(seconds: 4);
   static const Duration _restoreHintDuration = Duration(seconds: 2);
   static const Duration _searchDebounceDuration = Duration(milliseconds: 200);
+  static const Duration _searchMorphDuration = Duration(milliseconds: 280);
 
   final Set<String> _selectedNoteIds = <String>{};
   final Set<String> _optimisticHiddenNoteIds = <String>{};
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final GlobalKey _listSearchFieldKey = GlobalKey();
+  final GlobalKey _topSearchFieldKey = GlobalKey();
   Timer? _searchDebounceTimer;
+  OverlayEntry? _searchMorphOverlay;
+  Rect? _cachedListSearchRect;
+  late final AnimationController _searchMorphController;
   String _searchInput = '';
   String _effectiveSearchKeyword = '';
+  bool _isSearchMode = false;
+  bool _isSearchAnimating = false;
+  bool _isSearchMorphEntering = false;
 
   bool get _isSelectionMode => _selectedNoteIds.isNotEmpty;
+  bool get _showTopSearchField => _isSearchMode && !_isSearchAnimating;
+  bool get _showHeaderSection => !_isSearchMode && !_isSearchAnimating;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchMorphController = AnimationController(
+      vsync: this,
+      duration: _searchMorphDuration,
+    )..addListener(() {
+      _searchMorphOverlay?.markNeedsBuild();
+    });
+  }
 
   @override
   void dispose() {
+    _searchMorphOverlay?.remove();
+    _searchMorphOverlay = null;
+    _searchMorphController.dispose();
     _searchDebounceTimer?.cancel();
     _searchFocusNode.dispose();
     _searchController.dispose();
@@ -60,6 +86,12 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
   void _toggleSelection(String noteId, {bool forceSelect = false}) {
     setState(() {
+      if (forceSelect && _isSearchMode) {
+        _isSearchMode = false;
+        _isSearchAnimating = false;
+        _searchFocusNode.unfocus();
+        FocusManager.instance.primaryFocus?.unfocus();
+      }
       if (forceSelect) {
         _selectedNoteIds.add(noteId);
         return;
@@ -214,6 +246,246 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       _searchInput = '';
       _effectiveSearchKeyword = '';
     });
+  }
+
+  bool get _searchActivationEnabled => !_isSelectionMode && !_isSearchAnimating;
+
+  Future<void> _activateSearchMode() async {
+    if (!_searchActivationEnabled || _isSearchMode) {
+      return;
+    }
+    await _runSearchMorph(enter: true);
+  }
+
+  Future<void> _deactivateSearchMode() async {
+    if (_isSearchAnimating || !_isSearchMode) {
+      return;
+    }
+    await _runSearchMorph(enter: false);
+  }
+
+  Future<void> _runSearchMorph({required bool enter}) async {
+    _searchFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final beginRect = _rectFromKey(
+      enter ? _listSearchFieldKey : _topSearchFieldKey,
+    );
+    if (enter && beginRect != null) {
+      _cachedListSearchRect = beginRect;
+    }
+    final endRect =
+        enter
+            ? _rectFromKey(_topSearchFieldKey)
+            : (_cachedListSearchRect ?? _rectFromKey(_listSearchFieldKey));
+    if (beginRect == null || endRect == null) {
+      setState(() {
+        _isSearchMode = enter;
+        _isSearchAnimating = false;
+        _isSearchMorphEntering = false;
+      });
+      if (enter) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        if (mounted) {
+          _searchFocusNode.requestFocus();
+        }
+      }
+      return;
+    }
+
+    setState(() {
+      _isSearchAnimating = true;
+      _isSearchMorphEntering = enter;
+    });
+    if (!mounted) {
+      return;
+    }
+
+    _showSearchMorphOverlay(beginRect, endRect);
+    _searchMorphController.value = 0;
+    var completed = false;
+    try {
+      await _searchMorphController.forward();
+      completed = true;
+    } finally {
+      if (!completed) {
+        _removeSearchMorphOverlay();
+        if (mounted) {
+          setState(() {
+            _isSearchAnimating = false;
+            _isSearchMorphEntering = false;
+          });
+        }
+      }
+    }
+    if (!mounted) {
+      _removeSearchMorphOverlay();
+      return;
+    }
+
+    setState(() {
+      _isSearchMode = enter;
+      _isSearchAnimating = false;
+      _isSearchMorphEntering = false;
+    });
+    await Future<void>.delayed(Duration.zero);
+    _removeSearchMorphOverlay();
+
+    if (enter) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+      }
+    } else {
+      _searchFocusNode.unfocus();
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
+  }
+
+  Rect? _rectFromKey(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) {
+      return null;
+    }
+    final object = context.findRenderObject();
+    if (object is! RenderBox || !object.hasSize || !object.attached) {
+      return null;
+    }
+    final topLeft = object.localToGlobal(Offset.zero);
+    return topLeft & object.size;
+  }
+
+  void _showSearchMorphOverlay(Rect begin, Rect end) {
+    _removeSearchMorphOverlay();
+    final overlay = Overlay.of(context, rootOverlay: true);
+    _searchMorphOverlay = OverlayEntry(
+      builder: (context) {
+        final t = Curves.easeOutCubic.transform(_searchMorphController.value);
+        final rect = Rect.lerp(begin, end, t)!;
+        return Stack(
+          children: [
+            Positioned.fromRect(
+              rect: rect,
+              child: IgnorePointer(child: _buildMorphSearchGhost(context)),
+            ),
+          ],
+        );
+      },
+    );
+    overlay.insert(_searchMorphOverlay!);
+  }
+
+  void _removeSearchMorphOverlay() {
+    _searchMorphOverlay?.remove();
+    _searchMorphOverlay = null;
+  }
+
+  Widget _buildMorphSearchGhost(BuildContext context) {
+    final displayedText = _searchInput.trim();
+    final hasText = displayedText.isNotEmpty;
+    final textTheme = Theme.of(context).textTheme;
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color:
+              Theme.of(context).inputDecorationTheme.fillColor ??
+              Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Theme.of(context).dividerColor.withValues(alpha: 0.22),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(
+          children: [
+            Icon(
+              CupertinoIcons.search,
+              size: 18,
+              color: textTheme.bodySmall?.color,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                hasText ? displayedText : context.l10n.searchNotesHint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    hasText
+                        ? textTheme.bodyLarge
+                        : textTheme.bodyMedium?.copyWith(
+                          color: textTheme.bodySmall?.color?.withValues(
+                            alpha: 0.8,
+                          ),
+                        ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopSearchField() {
+    final l10n = context.l10n;
+    final hasText = _searchInput.isNotEmpty;
+    return Container(
+      key: _topSearchFieldKey,
+      height: 48,
+      alignment: Alignment.center,
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        onChanged: _onSearchChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: l10n.searchNotesHint,
+          prefixIcon: const Icon(CupertinoIcons.search),
+          suffixIcon: SizedBox(
+            width: hasText ? 84 : 44,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (hasText)
+                  IconButton(
+                    tooltip: l10n.cancel,
+                    onPressed: _clearSearch,
+                    icon: const Icon(CupertinoIcons.clear_circled_solid),
+                  ),
+                IconButton(
+                  tooltip: l10n.cancel,
+                  onPressed: _deactivateSearchMode,
+                  icon: const Icon(CupertinoIcons.xmark_circle_fill),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopSearchLayer() {
+    return IgnorePointer(
+      ignoring: !_showTopSearchField,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.l,
+            AppSpacing.m,
+            AppSpacing.l,
+            0,
+          ),
+          child: AnimatedOpacity(
+            duration: _searchMorphDuration,
+            curve: Curves.easeOutCubic,
+            opacity: _showTopSearchField ? 1 : 0,
+            child: _buildTopSearchField(),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _archiveSingleNote({
@@ -431,9 +703,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       body: Stack(
         children: [
           PopScope(
-            canPop: !_isSelectionMode,
+            canPop: !(_isSelectionMode || _isSearchMode || _isSearchAnimating),
             onPopInvokedWithResult: (didPop, result) {
-              if (!didPop && _isSelectionMode) {
+              if (didPop) {
+                return;
+              }
+              if (_isSearchMode || _isSearchAnimating) {
+                unawaited(_deactivateSearchMode());
+                return;
+              }
+              if (_isSelectionMode) {
                 _clearSelection();
               }
             },
@@ -443,10 +722,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 if (event is! KeyDownEvent) {
                   return KeyEventResult.ignored;
                 }
-                if (event.logicalKey == LogicalKeyboardKey.escape &&
-                    _isSelectionMode) {
-                  _clearSelection();
-                  return KeyEventResult.handled;
+                if (event.logicalKey == LogicalKeyboardKey.escape) {
+                  if (_isSearchMode || _isSearchAnimating) {
+                    unawaited(_deactivateSearchMode());
+                    return KeyEventResult.handled;
+                  }
+                  if (_isSelectionMode) {
+                    _clearSelection();
+                    return KeyEventResult.handled;
+                  }
                 }
                 return KeyEventResult.ignored;
               },
@@ -509,35 +793,52 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                         });
                       }
 
+                      final showListSearchRow =
+                          _isSearchAnimating ? !_isSearchMorphEntering : !_isSearchMode;
+                      final hideListSearchFieldVisual =
+                          _isSearchMode || _isSearchAnimating;
+
                       return Column(
                         children: [
                           // 区块一：顶部头部（标题 + 页面操作）。
-                          NotesHeaderSection(
-                            isSelectionMode: _isSelectionMode,
-                            selectedCount: _selectedNoteIds.length,
-                            onCancelSelection: _clearSelection,
-                            onArchiveSelected: () => _archiveSelected(services, l10n),
-                            onDeleteSelected: () => _deleteSelected(services, l10n),
-                            onOpenArchived:
-                                () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => const ArchivedNotesPage(),
-                                  ),
-                                ),
+                          AnimatedOpacity(
+                            duration: _searchMorphDuration,
+                            curve: Curves.easeOutCubic,
+                            opacity: _showHeaderSection ? 1 : 0,
+                            child: IgnorePointer(
+                              ignoring: !_showHeaderSection,
+                              child: NotesHeaderSection(
+                                isSelectionMode: _isSelectionMode,
+                                selectedCount: _selectedNoteIds.length,
+                                onCancelSelection: _clearSelection,
+                                onArchiveSelected:
+                                    () => _archiveSelected(services, l10n),
+                                onDeleteSelected:
+                                    () => _deleteSelected(services, l10n),
+                                onOpenArchived:
+                                    () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const ArchivedNotesPage(),
+                                      ),
+                                    ),
+                              ),
+                            ),
                           ),
                           const SizedBox(height: AppSpacing.s),
                           // 区块二：主列表区域（含标题行、空态、笔记卡片）。
                           NotesListSection(
-                            searchController: _searchController,
-                            searchFocusNode: _searchFocusNode,
+                            searchFieldKey: _listSearchFieldKey,
+                            searchPreviewText: _searchInput,
+                            showSearchRow: showListSearchRow,
+                            animateSearchRow: true,
+                            hideSearchFieldVisual: hideListSearchFieldVisual,
+                            searchEnabled: _searchActivationEnabled,
+                            onActivateSearchMode: _activateSearchMode,
                             notes: notes,
-                            searchText: _searchInput,
                             selectedNoteIds: _selectedNoteIds,
                             isSelectionMode: _isSelectionMode,
                             listBottomOffset: listBottomOffset,
                             desktopContextMenuEnabled: desktopContextMenuEnabled,
-                            onSearchChanged: _onSearchChanged,
-                            onClearSearch: _clearSearch,
                             onCreate: _openEditor,
                             onOpenEditor: _openEditor,
                             onToggleSelection:
@@ -570,6 +871,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               ),
             ),
           ),
+          // 顶部搜索层：进入搜索后承载可编辑输入框，并在进入/退出时作为位移动画目标位。
+          _buildTopSearchLayer(),
           // 区块三：悬浮新建按钮（多选模式隐藏）。
           if (!_isSelectionMode)
             Positioned(

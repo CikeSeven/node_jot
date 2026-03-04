@@ -17,18 +17,24 @@ import '../widgets/swipe_action_background.dart';
 /// - 普通卡片列表；
 /// - 非多选模式下支持左滑归档。
 class NotesListSection extends StatelessWidget {
+  static const Duration _searchRowAnimationDuration = Duration(
+    milliseconds: 280,
+  );
+
   const NotesListSection({
     super.key,
-    required this.searchController,
-    required this.searchFocusNode,
+    required this.searchFieldKey,
+    required this.searchPreviewText,
+    required this.showSearchRow,
+    required this.animateSearchRow,
+    required this.hideSearchFieldVisual,
+    required this.searchEnabled,
+    required this.onActivateSearchMode,
     required this.notes,
-    required this.searchText,
     required this.selectedNoteIds,
     required this.isSelectionMode,
     required this.listBottomOffset,
     required this.desktopContextMenuEnabled,
-    required this.onSearchChanged,
-    required this.onClearSearch,
     required this.onCreate,
     required this.onOpenEditor,
     required this.onToggleSelection,
@@ -36,16 +42,18 @@ class NotesListSection extends StatelessWidget {
     required this.onArchiveBySwipe,
   });
 
-  final TextEditingController searchController;
-  final FocusNode searchFocusNode;
+  final GlobalKey searchFieldKey;
+  final String searchPreviewText;
+  final bool showSearchRow;
+  final bool animateSearchRow;
+  final bool hideSearchFieldVisual;
+  final bool searchEnabled;
+  final VoidCallback onActivateSearchMode;
   final List<NoteEntity> notes;
-  final String searchText;
   final Set<String> selectedNoteIds;
   final bool isSelectionMode;
   final double listBottomOffset;
   final bool desktopContextMenuEnabled;
-  final ValueChanged<String> onSearchChanged;
-  final VoidCallback onClearSearch;
   final VoidCallback onCreate;
   final ValueChanged<String?> onOpenEditor;
   final void Function(String noteId, bool forceSelect) onToggleSelection;
@@ -56,42 +64,113 @@ class NotesListSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final baseItemCount = notes.isEmpty ? 2 : notes.length + 1;
+    final itemCount = baseItemCount + 1;
     return Expanded(
       child: ListView.separated(
         key: const PageStorageKey<String>('notes_list'),
         padding: EdgeInsets.only(bottom: listBottomOffset),
-        itemCount: notes.isEmpty ? 3 : notes.length + 2,
+        itemCount: itemCount,
         separatorBuilder: (context, index) {
-          return SizedBox(height: 8);
+          if (index == 0 && !showSearchRow) {
+            return const SizedBox.shrink();
+          }
+          return const SizedBox(height: 8);
         },
         itemBuilder: (context, index) {
           // 区块一：搜索框（列表顶部，随列表滚动）。
           if (index == 0) {
+            final hintStyle = Theme.of(context).textTheme.bodyMedium;
+            final textStyle = Theme.of(context).textTheme.bodyLarge;
+            final displayedText = searchPreviewText.trim();
+            final hasText = displayedText.isNotEmpty;
+            final targetHeight = showSearchRow ? 48.0 : 0.0;
+
             return Padding(
+              key: searchFieldKey,
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-              child: TextField(
-                controller: searchController,
-                focusNode: searchFocusNode,
-                onChanged: onSearchChanged,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: l10n.searchNotesHint,
-                  prefixIcon: const Icon(CupertinoIcons.search),
-                  suffixIcon:
-                      searchText.isEmpty
-                          ? null
-                          : IconButton(
-                            tooltip: l10n.cancel,
-                            onPressed: onClearSearch,
-                            icon: const Icon(CupertinoIcons.clear_circled_solid),
+              child: AnimatedContainer(
+                duration:
+                    animateSearchRow
+                        ? _searchRowAnimationDuration
+                        : Duration.zero,
+                curve: Curves.easeOutCubic,
+                height: targetHeight,
+                child: ClipRect(
+                  child: Opacity(
+                    opacity: hideSearchFieldVisual ? 0 : 1,
+                    child: AbsorbPointer(
+                      absorbing: hideSearchFieldVisual || !showSearchRow,
+                      child: GestureDetector(
+                        onTap: searchEnabled ? onActivateSearchMode : null,
+                        child: Container(
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(
+                                  context,
+                                ).inputDecorationTheme.fillColor ??
+                                Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color:
+                                  searchEnabled
+                                      ? Theme.of(
+                                        context,
+                                      ).dividerColor.withValues(alpha: 0.22)
+                                      : Theme.of(
+                                        context,
+                                      ).dividerColor.withValues(alpha: 0.1),
+                            ),
                           ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Row(
+                            children: [
+                              Icon(
+                                CupertinoIcons.search,
+                                size: 18,
+                                color:
+                                    searchEnabled
+                                        ? Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall?.color
+                                        : Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.color
+                                            ?.withValues(alpha: 0.45),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  hasText ? displayedText : l10n.searchNotesHint,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style:
+                                      hasText
+                                          ? textStyle
+                                          : hintStyle?.copyWith(
+                                            color: hintStyle.color?.withValues(
+                                              alpha: 0.8,
+                                            ),
+                                          ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             );
           }
 
+          final effectiveIndex = index - 1;
+
           // 区块二：列表标题行（位于搜索框下方，随列表滚动）。
-          if (index == 1) {
+          if (effectiveIndex == 0) {
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
               child: Row(
@@ -120,7 +199,7 @@ class NotesListSection extends StatelessWidget {
           }
 
           // 区块四：普通笔记卡片。
-          final note = notes[index - 2];
+          final note = notes[effectiveIndex - 1];
           final selected = selectedNoteIds.contains(note.noteId);
 
           Widget card = Padding(
