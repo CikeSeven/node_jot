@@ -428,7 +428,6 @@ class _NotesPageState extends ConsumerState<NotesPage>
 
   Widget _buildTopSearchField() {
     final l10n = context.l10n;
-    final hasText = _searchInput.isNotEmpty;
     return Container(
       key: _topSearchFieldKey,
       height: 48,
@@ -442,19 +441,16 @@ class _NotesPageState extends ConsumerState<NotesPage>
           hintText: l10n.searchNotesHint,
           prefixIcon: const Icon(CupertinoIcons.search),
           suffixIcon: SizedBox(
-            width: hasText ? 84 : 44,
+            width: 44,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (hasText)
-                  IconButton(
-                    tooltip: l10n.cancel,
-                    onPressed: _clearSearch,
-                    icon: const Icon(CupertinoIcons.clear_circled_solid),
-                  ),
                 IconButton(
                   tooltip: l10n.cancel,
-                  onPressed: _deactivateSearchMode,
+                  onPressed: () {
+                    _clearSearch();
+                    unawaited(_deactivateSearchMode());
+                  },
                   icon: const Icon(CupertinoIcons.xmark_circle_fill),
                 ),
               ],
