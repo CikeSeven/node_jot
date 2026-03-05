@@ -1,16 +1,79 @@
-# node_jot
+# NodeJot
 
-A new Flutter project.
+局域网多端同步的本地优先笔记应用（Android / iOS / Windows）。
 
-## Getting Started
+中文 | [English](./README.en.md)
 
-This project is a starting point for a Flutter application.
+## 软件简介
 
-A few resources to get you started if this is your first Flutter project:
+NodeJot 是一个无云端、无账号体系的笔记软件，专注在局域网内多设备同步。
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- 数据默认保存在本机
+- 支持跨平台互通（Android / iOS / Windows）
+- 配对后可在局域网内同步笔记
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 适用场景
+
+- 家里或办公室多设备共享笔记
+- 不希望使用云端账号和第三方服务器
+- 需要离线可用、联网后再自动同步
+
+## 主要功能
+
+- 笔记编辑：创建、编辑、删除、归档、撤销删除
+- 局域网发现：自动发现同网段设备
+- 安全配对：4 位配对码连接设备
+- 设备管理：查看已连接设备、删除配对、设置备注
+- 跨端同步：已配对设备间同步笔记内容
+- 编辑体验：Markdown 友好输入与移动端快捷工具栏
+
+## 界面预览
+
+> 以下为截图占位。你把图片放到对应路径后，GitHub 会自动显示。
+
+| 笔记列表页 | 笔记编辑页 | 设备页面 |
+|---|---|---|
+| <img src="./docs/screenshots/notes-list.jpg" alt="笔记列表页" width="320" /> | <img src="./docs/screenshots/note-editor.jpg" alt="笔记编辑页" width="320" /> | <img src="./docs/screenshots/devices-page.jpg" alt="设备页面" width="320" /> |
+
+| 设置页面 |  |  |
+|---|---|---|
+| <img src="./docs/screenshots/settings-page.jpg" alt="设置页面" width="320" /> |  |  |
+
+## 使用流程（3 步）
+
+1. 打开应用，在“设备”页面查看本机配对码  
+2. 在另一台设备输入该配对码完成连接  
+3. 返回笔记页面开始编辑，内容会在已连接设备间同步
+
+## 常见问题（FAQ）
+
+### 1. 会上传到云端吗？
+不会。NodeJot 默认不提供云端上传与账号体系。
+
+### 2. 为什么有时发现不到设备？
+请确认两端在同一局域网，并允许应用的本地网络访问权限。
+检查Windows防火墙是否关闭。
+
+### 3. 同步需要手动操作吗？
+配对后可按设置启用自动同步；也可以手动触发同步。
+
+## 隐私与安全
+
+- 无账号系统，不上传云端
+- 笔记默认仅保存在本地设备
+- 设备通信基于局域网与配对密钥
+
+## 支持平台
+
+- Android
+- Windows
+
+## 已知限制
+
+- 当前仅支持文本笔记
+- 暂不支持附件/图片同步
+- 仅支持局域网内同步，不支持公网直连
+
+## 反馈
+
+欢迎通过 GitHub Issues 提交问题和建议。
