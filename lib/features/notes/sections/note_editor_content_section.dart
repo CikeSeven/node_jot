@@ -25,7 +25,7 @@ class NoteEditorContentSection extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         AppSpacing.l,
-        AppSpacing.s,
+        0,
         AppSpacing.l,
         bottomPadding,
       ),

@@ -335,10 +335,8 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         keyboardVisible
             // MobileToolbarV2 会处理工具栏自身占位，这里仅补键盘抬升高度，
             // 避免工具栏高度在两层重复叠加导致底部出现空白带。
-            ? keyboardInset + AppSpacing.s
-            : _bottomStatusBarHeight +
-                MediaQuery.paddingOf(context).bottom +
-                AppSpacing.l;
+            ? keyboardInset
+            : _bottomStatusBarHeight + MediaQuery.paddingOf(context).bottom;
 
     Widget editor = AppFlowyEditor(
       editorState: state,
@@ -461,6 +459,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
             gradient: AppTheme.pageBackground(Theme.of(context).brightness),
           ),
           child: SafeArea(
+            top: false,
             child: ValueListenableBuilder<bool>(
               valueListenable: _controller.loadingNotifier,
               builder: (context, loading, _) {
