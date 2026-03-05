@@ -29,8 +29,6 @@ NodeJot 是一个无云端、无账号体系的笔记软件，专注在局域网
 
 ## 界面预览
 
-> 以下为截图占位。你把图片放到对应路径后，GitHub 会自动显示。
-
 | 笔记列表页 | 笔记编辑页 | 设备页面 |
 |---|---|---|
 | <img src="./docs/screenshots/notes-list.jpg" alt="笔记列表页" width="320" /> | <img src="./docs/screenshots/note-editor.jpg" alt="笔记编辑页" width="320" /> | <img src="./docs/screenshots/devices-page.jpg" alt="设备页面" width="320" /> |
