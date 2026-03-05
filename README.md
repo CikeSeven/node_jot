@@ -77,3 +77,7 @@ NodeJot 是一个无云端、无账号体系的笔记软件，专注在局域网
 ## 反馈
 
 欢迎通过 GitHub Issues 提交问题和建议。
+
+## 致谢
+
+本软件由 ChatGPT Codex 以 vibe coding 方式构建。

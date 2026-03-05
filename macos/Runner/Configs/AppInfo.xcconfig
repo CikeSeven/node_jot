@@ -8,8 +8,9 @@
 PRODUCT_NAME = node_jot
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.nodejot.app
+PRODUCT_BUNDLE_IDENTIFIER = com.nodejot
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+
 

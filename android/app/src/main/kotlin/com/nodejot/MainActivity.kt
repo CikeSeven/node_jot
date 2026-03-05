@@ -1,4 +1,4 @@
-package com.nodejot.app
+﻿package com.nodejot
 
 import android.content.Context
 import android.net.wifi.WifiManager
@@ -48,3 +48,4 @@ class MainActivity : FlutterActivity() {
             }
     }
 }
+

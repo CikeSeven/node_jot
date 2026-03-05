@@ -77,3 +77,7 @@ After pairing, you can enable auto-sync in settings, or trigger sync manually.
 ## Feedback
 
 Feel free to submit issues and suggestions via GitHub Issues.
+
+## Credits
+
+This app was built with ChatGPT Codex using a vibe coding workflow.
