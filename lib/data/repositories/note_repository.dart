@@ -133,15 +133,22 @@ class NoteRepository {
   /// 迁移旧版 `title + contentMd` 到 `contentDocJson` 主存储。
   Future<void> migrateLegacyNotesToDocJson() async {
     final allNotes = await _db.noteEntitys.where().findAll();
+    final changedNotes = <NoteEntity>[];
     for (final note in allNotes) {
       final changed = await _migrateSingleNote(note);
       if (!changed) {
         continue;
       }
-      await _db.writeTxn(() async {
-        await _db.noteEntitys.put(note);
-      });
+      changedNotes.add(note);
     }
+    if (changedNotes.isEmpty) {
+      return;
+    }
+    await _db.writeTxn(() async {
+      for (final note in changedNotes) {
+        await _db.noteEntitys.put(note);
+      }
+    });
   }
 
   /// 清理历史冲突副本。
@@ -492,54 +499,88 @@ class NoteRepository {
   }
 
   Future<bool> _migrateSingleNote(NoteEntity note) async {
-    final hasDocJson = (note.contentDocJson ?? '').trim().isNotEmpty;
+    final previousDocJson = (note.contentDocJson ?? '').trim();
+    final previousContentMd = note.contentMd;
+    final previousTitle = note.title;
+    final previousDisplayTitle = note.displayTitleCache;
+    final previousPreview = note.previewTextCache;
+    final previousContentFormat = note.contentFormat;
+    final previousSchemaVersion = note.schemaVersion;
+    final previousDocVersion = note.docVersion;
 
-    if (!hasDocJson) {
-      final markdown = NoteDocCodec.buildMarkdownFromLegacy(
-        title: note.title,
-        contentMd: note.contentMd,
+    final fallbackMarkdown = NoteDocCodec.buildMarkdownFromLegacy(
+      title: note.title,
+      contentMd: note.contentMd,
+    );
+
+    final candidates = <_MigrationCandidate>[];
+    _MigrationCandidate? currentDocCandidate;
+
+    final docKind = _classifyDocJson(previousDocJson);
+    if (previousDocJson.isNotEmpty) {
+      try {
+        final snapshot = NoteDocCodec.fromDocJson(
+          docJson: previousDocJson,
+          fallbackMarkdown: fallbackMarkdown,
+          fallbackTitle: note.title,
+        );
+        currentDocCandidate = _MigrationCandidate(
+          snapshot: snapshot,
+          score: _scoreSnapshot(snapshot),
+          priority: 40,
+          lamport: null,
+        );
+        candidates.add(currentDocCandidate);
+      } catch (_) {
+        // ignore and fallback to other sources.
+      }
+    }
+
+    final legacySnapshot = NoteDocCodec.fromMarkdown(fallbackMarkdown);
+    candidates.add(
+      _MigrationCandidate(
+        snapshot: legacySnapshot,
+        score: _scoreSnapshot(legacySnapshot),
+        priority: 20,
+        lamport: null,
+      ),
+    );
+
+    final shouldTryOpRecovery =
+        docKind != _MigrationDocKind.quillList ||
+        (currentDocCandidate != null &&
+            (_looksLikeTruncatedSingleHeading(currentDocCandidate.snapshot) ||
+                _mayNeedFormattingRecovery(currentDocCandidate.snapshot)));
+    if (shouldTryOpRecovery) {
+      final opCandidates = await _recoverFromOpPayloads(
+        note.noteId,
+        limit: 120,
       );
-      note
-        ..contentMd = markdown
-        ..title = NoteDocCodec.extractDisplayTitle(markdown)
-        ..displayTitleCache = NoteDocCodec.extractDisplayTitle(markdown)
-        ..previewTextCache = NoteDocCodec.extractPreviewText(markdown)
-        ..contentFormat = NoteDocCodec.contentFormat
-        ..schemaVersion = NoteDocCodec.schemaVersion
-        ..docVersion = NoteDocCodec.schemaVersion;
-      return true;
+      candidates.addAll(opCandidates);
     }
 
-    final markdown = note.contentMd.trim();
-    final looksLikeDefaultHeadingOnly =
-        markdown == '# 标题' ||
-        markdown == '# 标题\n' ||
-        markdown == '# 未命名笔记' ||
-        markdown == '# 未命名笔记\n' ||
-        markdown == '# Title';
-    if (markdown.isNotEmpty && !looksLikeDefaultHeadingOnly) {
-      note
-        ..displayTitleCache = NoteDocCodec.extractDisplayTitle(note.contentMd)
-        ..previewTextCache = NoteDocCodec.extractPreviewText(note.contentMd)
-        ..contentFormat = NoteDocCodec.contentFormat
-        ..schemaVersion =
-            note.schemaVersion == 0
-                ? NoteDocCodec.schemaVersion
-                : note.schemaVersion
-        ..docVersion =
-            note.docVersion == 0 ? NoteDocCodec.schemaVersion : note.docVersion;
-      return true;
-    }
+    final nextSnapshot = _pickMigrationCandidate(
+      candidates: candidates,
+      currentDocCandidate: currentDocCandidate,
+      docKind: docKind,
+    );
 
-    final recovered = await _recoverFromLatestOpPayload(note.noteId);
-    if (recovered == null) {
-      return false;
-    }
-    _applyDocSnapshotToNote(note, recovered);
-    return true;
+    _applyDocSnapshotToNote(note, nextSnapshot);
+
+    return (note.contentDocJson ?? '').trim() != previousDocJson ||
+        note.contentMd != previousContentMd ||
+        note.title != previousTitle ||
+        note.displayTitleCache != previousDisplayTitle ||
+        note.previewTextCache != previousPreview ||
+        note.contentFormat != previousContentFormat ||
+        note.schemaVersion != previousSchemaVersion ||
+        note.docVersion != previousDocVersion;
   }
 
-  Future<NoteDocSnapshot?> _recoverFromLatestOpPayload(String noteId) async {
+  Future<List<_MigrationCandidate>> _recoverFromOpPayloads(
+    String noteId, {
+    int limit = 120,
+  }) async {
     final logs =
         await _db.opLogEntitys
             .where()
@@ -547,7 +588,14 @@ class NoteRepository {
             .noteIdEqualTo(noteId)
             .sortByLamportDesc()
             .findAll();
+    final result = <_MigrationCandidate>[];
+    final maxCount = limit < 1 ? 1 : limit;
+    var rank = 0;
+
     for (final log in logs) {
+      if (rank >= maxCount) {
+        break;
+      }
       if (log.opType == 'delete') {
         continue;
       }
@@ -557,11 +605,251 @@ class NoteRepository {
           continue;
         }
         final schema = (payload['schemaVersion'] as int?) ?? 1;
-        return _snapshotToDoc(payload, schema);
+        final snapshot = _snapshotToDoc(payload, schema);
+        result.add(
+          _MigrationCandidate(
+            snapshot: snapshot,
+            score: _scoreSnapshot(snapshot),
+            priority: 30,
+            lamport: log.lamport,
+          ),
+        );
+        rank += 1;
       } catch (_) {
         continue;
       }
     }
-    return null;
+    return result;
   }
+
+  _MigrationDocKind _classifyDocJson(String contentDocJson) {
+    if (contentDocJson.isEmpty) {
+      return _MigrationDocKind.empty;
+    }
+    try {
+      final raw = jsonDecode(contentDocJson);
+      if (raw is List) {
+        return _MigrationDocKind.quillList;
+      }
+      if (raw is Map<String, dynamic>) {
+        return _MigrationDocKind.legacyMap;
+      }
+      return _MigrationDocKind.invalid;
+    } catch (_) {
+      return _MigrationDocKind.invalid;
+    }
+  }
+
+  NoteDocSnapshot _pickMigrationCandidate({
+    required List<_MigrationCandidate> candidates,
+    required _MigrationCandidate? currentDocCandidate,
+    required _MigrationDocKind docKind,
+  }) {
+    if (candidates.isEmpty) {
+      return NoteDocCodec.fromMarkdown(NoteDocCodec.buildNewNoteMarkdown());
+    }
+
+    _MigrationCandidate best = candidates.first;
+    for (final candidate in candidates.skip(1)) {
+      if (_compareCandidate(candidate, best) > 0) {
+        best = candidate;
+      }
+    }
+
+    final current = currentDocCandidate;
+    if (current == null) {
+      return best.snapshot;
+    }
+
+    // 旧格式/损坏格式迁移：直接选最优候选。
+    if (docKind != _MigrationDocKind.quillList) {
+      return best.snapshot;
+    }
+
+    // 新格式兜底修复：仅在“疑似截断”为标题单行时，且存在明显更优候选时替换。
+    if (_looksLikeTruncatedSingleHeading(current.snapshot) &&
+        _compareCandidate(best, current) > 1200) {
+      return best.snapshot;
+    }
+
+    if (_canUpgradeFormatting(current, best)) {
+      return best.snapshot;
+    }
+
+    return current.snapshot;
+  }
+
+  bool _canUpgradeFormatting(
+    _MigrationCandidate current,
+    _MigrationCandidate best,
+  ) {
+    final currentBlockScore = _quillBlockStyleScore(
+      current.snapshot.contentDocJson,
+    );
+    final bestBlockScore = _quillBlockStyleScore(best.snapshot.contentDocJson);
+    if (bestBlockScore <= currentBlockScore) {
+      return false;
+    }
+
+    final currentSignature = _plainTextSignature(current.snapshot.contentMd);
+    final bestSignature = _plainTextSignature(best.snapshot.contentMd);
+    if (currentSignature.isEmpty ||
+        bestSignature.isEmpty ||
+        currentSignature != bestSignature) {
+      return false;
+    }
+
+    return true;
+  }
+
+  int _compareCandidate(_MigrationCandidate a, _MigrationCandidate b) {
+    final scoreDiff = a.score - b.score;
+    if (scoreDiff != 0) {
+      return scoreDiff;
+    }
+    final priorityDiff = a.priority - b.priority;
+    if (priorityDiff != 0) {
+      return priorityDiff;
+    }
+    final lamportA = a.lamport ?? -1;
+    final lamportB = b.lamport ?? -1;
+    return lamportA - lamportB;
+  }
+
+  bool _looksLikeTruncatedSingleHeading(NoteDocSnapshot snapshot) {
+    final lines = snapshot.contentMd
+        .replaceAll('\r\n', '\n')
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.length != 1) {
+      return false;
+    }
+    return lines.first.startsWith('# ');
+  }
+
+  int _scoreSnapshot(NoteDocSnapshot snapshot) {
+    final lines = snapshot.contentMd
+        .replaceAll('\r\n', '\n')
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    final nonWhitespaceLength =
+        snapshot.contentMd.replaceAll(RegExp(r'\s+'), '').length;
+    final headingLineCount =
+        lines.where((line) => line.startsWith('# ')).length;
+    final bodyLineCount = lines.length - headingLineCount;
+    final bodyChars =
+        lines
+            .where((line) => !line.startsWith('# '))
+            .join()
+            .replaceAll(RegExp(r'\s+'), '')
+            .length;
+    final blockScore = _quillBlockStyleScore(snapshot.contentDocJson);
+
+    return nonWhitespaceLength +
+        lines.length * 1000 +
+        bodyLineCount * 500 +
+        bodyChars * 2 +
+        blockScore * 600;
+  }
+
+  bool _mayNeedFormattingRecovery(NoteDocSnapshot snapshot) {
+    final lines = snapshot.contentMd
+        .replaceAll('\r\n', '\n')
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.length <= 1) {
+      return false;
+    }
+
+    final blockScore = _quillBlockStyleScore(snapshot.contentDocJson);
+    if (blockScore > 0) {
+      return false;
+    }
+
+    final bodyLines = lines.where((line) => !line.startsWith('# '));
+    return bodyLines.isNotEmpty;
+  }
+
+  int _quillBlockStyleScore(String contentDocJson) {
+    if (contentDocJson.trim().isEmpty) {
+      return 0;
+    }
+    try {
+      final raw = jsonDecode(contentDocJson);
+      if (raw is! List) {
+        return 0;
+      }
+
+      var score = 0;
+      for (final op in raw) {
+        if (op is! Map) {
+          continue;
+        }
+        final insert = op['insert'];
+        if (insert != '\n') {
+          continue;
+        }
+        final attrs = op['attributes'];
+        if (attrs is! Map) {
+          continue;
+        }
+        if (attrs['header'] != null) {
+          score += 2;
+        }
+        final listType = attrs['list'];
+        if (listType == 'checked' || listType == 'unchecked') {
+          score += 4;
+        } else if (listType != null) {
+          score += 3;
+        }
+        if (attrs['blockquote'] != null) {
+          score += 3;
+        }
+        if (attrs['code-block'] != null) {
+          score += 3;
+        }
+      }
+      return score;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  String _plainTextSignature(String markdown) {
+    final lines = markdown.replaceAll('\r\n', '\n').split('\n');
+    final normalized = lines
+        .map((line) {
+          var text = line.trimLeft();
+          text = text.replaceFirst(RegExp(r'^#{1,6}\s+'), '');
+          text = text.replaceFirst(RegExp(r'^-\s\[(?: |x|X)\]\s+'), '');
+          text = text.replaceFirst(RegExp(r'^[-*+]\s+'), '');
+          text = text.replaceFirst(RegExp(r'^\d+\.\s+'), '');
+          text = text.replaceFirst(RegExp(r'^>\s*'), '');
+          return text.trim();
+        })
+        .join('\n');
+    return normalized.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+  }
+}
+
+enum _MigrationDocKind { empty, quillList, legacyMap, invalid }
+
+class _MigrationCandidate {
+  const _MigrationCandidate({
+    required this.snapshot,
+    required this.score,
+    required this.priority,
+    required this.lamport,
+  });
+
+  final NoteDocSnapshot snapshot;
+  final int score;
+  final int priority;
+  final int? lamport;
 }

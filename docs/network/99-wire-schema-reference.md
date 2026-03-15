@@ -250,7 +250,7 @@
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `noteId` | string | 笔记业务主键 |
-| `contentDocJson` | string? | AppFlowy 文档 JSON |
+| `contentDocJson` | string? | 结构化文档 JSON（当前为 quill delta） |
 | `contentMd` | string | markdown 镜像 |
 | `title` | string | 展示标题（兼容字段） |
 | `updatedAt` | string | ISO8601 |
@@ -294,4 +294,3 @@
 | `peer_settings_apply` | `SyncEngine._syncTrustedSettingsWithPeer` | `SyncEngine._handlePeerSettingsApply` |
 | `sync_request` | `SyncEngine.syncWithDevice` | `SyncEngine._handleSyncRequest` |
 | `sync_push` | `SyncEngine.syncWithDevice` | `SyncEngine._handleSyncPush` |
-

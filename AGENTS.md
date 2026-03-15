@@ -15,7 +15,7 @@
 - 局域网通信：HTTP + WebSocket + UDP 广播/组播
 - 加密：X25519 + HKDF + AES-GCM
 - 本地设置：shared_preferences
-- 文本编辑与文档结构：appflowy_editor（文档主存储为 `contentDocJson`）
+- 文本编辑与文档结构：flutter_quill（文档主存储为 `contentDocJson`）
 - 本地化：手写 LocalizationsDelegate（zh/en）
 
 ## 3. 主要功能
@@ -114,7 +114,7 @@
   - [NodeJot][sync-client]
   - [NodeJot][sync-server]
 - Android 需具备局域网相关权限与组播锁能力。
-- 迁移期间（Markdown -> AppFlowy 文档）优先确保：
+- 迁移期间（旧结构化文档/Markdown -> Quill Delta）优先确保：
   - 旧数据可读
   - 新数据可保存
   - 同步不回退到旧 schema

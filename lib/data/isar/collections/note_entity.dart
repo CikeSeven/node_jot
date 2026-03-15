@@ -17,7 +17,7 @@ class NoteEntity {
   /// 旧版独立标题字段（迁移兼容，后续不再作为主来源）。
   late String title;
 
-  /// AppFlowy 文档 JSON（主存储）。
+  /// 结构化文档 JSON（当前为 quill delta，主存储）。
   String? contentDocJson;
 
   /// 文档结构版本号。
@@ -29,7 +29,7 @@ class NoteEntity {
   /// 列表摘要缓存（由文档正文提取）。
   String? previewTextCache;
 
-  /// 文档渲染模式标记（当前固定为 `appflowy_doc`）。
+  /// 文档渲染模式标记（当前固定为 `quill_delta`）。
   String? contentFormat;
 
   /// 快照 schema 版本（用于同步协议版本控制）。

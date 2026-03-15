@@ -20,3 +20,4 @@ class AppConstants {
   /// 主动探测周期。
   static const Duration discoveryProbeInterval = Duration(seconds: 4);
 }
+ 

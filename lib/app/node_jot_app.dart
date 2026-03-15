@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import '../core/models/app_services.dart';
 import '../l10n/app_localizations.dart';
@@ -43,7 +43,9 @@ class NodeJotApp extends ConsumerWidget {
                             : Brightness.light);
 
                 return AnnotatedRegion(
-                  value: AppTheme.overlayStyleForBrightness(effectiveBrightness),
+                  value: AppTheme.overlayStyleForBrightness(
+                    effectiveBrightness,
+                  ),
                   child: child ?? const SizedBox.shrink(),
                 );
               },
@@ -58,7 +60,7 @@ class NodeJotApp extends ConsumerWidget {
                 GlobalMaterialLocalizations.delegate,
                 GlobalCupertinoLocalizations.delegate,
                 GlobalWidgetsLocalizations.delegate,
-                AppFlowyEditorLocalizations.delegate,
+                FlutterQuillLocalizations.delegate,
               ],
               home: const HomeShellPage(),
             );

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:flutter_quill/quill_delta.dart' as quill_delta;
 
 /// 文档转换结果。
 class NoteDocSnapshot {
@@ -21,20 +22,21 @@ class NoteDocSnapshot {
   final int schemaVersion;
 }
 
-/// Markdown 与 AppFlowy 文档的转换工具。
+/// Markdown、Quill Delta 与旧版结构化文档的转换工具。
 class NoteDocCodec {
   /// 当前文档结构版本。
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   /// 持久化内容格式标识（用于后续扩展多格式兼容）。
-  static const String contentFormat = 'appflowy_doc';
+  static const String contentFormat = 'quill_delta';
 
   /// 新建笔记默认标题。
   static const String defaultHeading = '未命名笔记';
 
   /// 构建新笔记的默认 markdown 模板（H1 + 空行）。
   static String buildNewNoteMarkdown({String heading = defaultHeading}) {
-    return '# ${heading.trim().isEmpty ? defaultHeading : heading.trim()}\n\n';
+    final normalized = _normalizeHeading(heading);
+    return '# $normalized\n\n';
   }
 
   /// 从 markdown 中提取用于列表显示的标题。
@@ -48,26 +50,16 @@ class NoteDocCodec {
   }
 
   /// 判断给定文本是否“看起来像 markdown 源文本”。
-  ///
-  /// 该方法主要用于粘贴场景下的轻量识别：
-  /// - 命中标题/列表/引用/代码块等行级语法时返回 `true`；
-  /// - 未命中行级语法时，会结合行内语法做次级判断。
   static bool isLikelyMarkdownSource(String source) {
     return _isLikelyMarkdownSource(source);
   }
 
   /// 兼容旧版字段（title + contentMd）并拼装为完整 markdown。
-  ///
-  /// 规则：
-  /// - 若正文本身已以 `# ` 开头，认为已含标题，不重复注入；
-  /// - 若正文为空，返回默认模板；
-  /// - 否则拼接为“# 标题 + 正文”结构。
   static String buildMarkdownFromLegacy({
     required String? title,
     required String contentMd,
   }) {
-    final normalizedTitle =
-        (title ?? '').trim().isEmpty ? defaultHeading : title!.trim();
+    final normalizedTitle = _normalizeHeading(title);
     final trimmed = contentMd.trim();
     if (trimmed.startsWith('# ')) {
       return contentMd;
@@ -79,33 +71,24 @@ class NoteDocCodec {
   }
 
   /// 从 markdown 直接生成文档快照。
-  ///
-  /// 主要用于：
-  /// - 外部导入 markdown；
-  /// - docJson 解析失败时的回退路径。
   static NoteDocSnapshot fromMarkdown(String markdown) {
-    final document = _ensureEditableDocument(
-      AppFlowyEditorMarkdownCodec().decode(markdown),
+    final document = _buildQuillDocumentFromMarkdown(
+      markdown,
       fallbackHeading: defaultHeading,
     );
     return fromDocument(document);
   }
 
   /// 从结构化文档生成存储快照。
-  ///
-  /// 输出包括：
-  /// - `contentDocJson`：结构化持久化内容（主存储）；
-  /// - `contentMd`：markdown 镜像（用于跨端兼容/预览）；
-  /// - `displayTitle/previewText`：列表展示所需派生字段。
-  static NoteDocSnapshot fromDocument(Document document) {
-    final summary = _summarizeDocument(document);
-    final markdown = _encodeMarkdownBestEffort(
-      document: document,
-      fallbackTitle: summary.title,
-      bodyLines: summary.bodyLines,
+  static NoteDocSnapshot fromDocument(quill.Document document) {
+    final normalized = _ensureEditableDocument(
+      document,
+      fallbackHeading: defaultHeading,
     );
+    final summary = _summarizeDocument(normalized);
+    final markdown = _buildMarkdown(summary.title, summary.bodyLines);
     return NoteDocSnapshot(
-      contentDocJson: jsonEncode(document.toJson()),
+      contentDocJson: jsonEncode(normalized.toDelta().toJson()),
       contentMd: markdown,
       displayTitle: summary.title,
       previewText: summary.preview,
@@ -120,92 +103,683 @@ class NoteDocCodec {
     String? fallbackMarkdown,
     String? fallbackTitle,
   }) {
-    try {
-      final raw = jsonDecode(docJson);
-      if (raw is Map<String, dynamic>) {
-        final document = _ensureEditableDocument(
-          Document.fromJson(raw),
-          fallbackHeading: fallbackTitle ?? defaultHeading,
-        );
-        return fromDocument(document);
-      }
-    } catch (_) {
-      // ignore and fallback to markdown decode.
-    }
-
-    final markdown =
-        fallbackMarkdown ??
-        buildNewNoteMarkdown(
-          heading:
-              (fallbackTitle ?? '').trim().isEmpty
-                  ? defaultHeading
-                  : fallbackTitle!.trim(),
-        );
-    return fromMarkdown(markdown);
+    final heading = _normalizeHeading(fallbackTitle);
+    final fallback = fallbackMarkdown ?? buildNewNoteMarkdown(heading: heading);
+    final document = _decodeDocumentInternal(
+      contentDocJson: docJson,
+      fallbackMarkdown: fallback,
+      fallbackHeading: heading,
+    );
+    return fromDocument(document);
   }
 
-  static Document decodeDocument({
+  static quill.Document decodeDocument({
     String? contentDocJson,
     String? fallbackMarkdown,
     String? fallbackTitle,
   }) {
-    final normalizedHeading =
-        (fallbackTitle ?? '').trim().isEmpty
-            ? defaultHeading
-            : fallbackTitle!.trim();
-    // fallback 路径始终保证可编辑：至少有 H1 + 段落。
-    final fallback =
-        fallbackMarkdown ?? buildNewNoteMarkdown(heading: normalizedHeading);
-    final fallbackDocument = _ensureEditableDocument(
-      AppFlowyEditorMarkdownCodec().decode(fallback),
-      fallbackHeading: normalizedHeading,
+    final heading = _normalizeHeading(fallbackTitle);
+    final fallback = fallbackMarkdown ?? buildNewNoteMarkdown(heading: heading);
+    return _decodeDocumentInternal(
+      contentDocJson: contentDocJson,
+      fallbackMarkdown: fallback,
+      fallbackHeading: heading,
+    );
+  }
+
+  /// 构造一个“标题 + 空行”的初始文档。
+  static quill.Document buildInitialDocument({
+    String heading = defaultHeading,
+  }) {
+    final normalized = _normalizeHeading(heading);
+    return _buildQuillDocumentFromPlainText('$normalized\n\n');
+  }
+
+  static quill.Document _decodeDocumentInternal({
+    required String? contentDocJson,
+    required String fallbackMarkdown,
+    required String fallbackHeading,
+  }) {
+    final fallbackDocument = _buildQuillDocumentFromMarkdown(
+      fallbackMarkdown,
+      fallbackHeading: fallbackHeading,
     );
 
-    if (contentDocJson != null && contentDocJson.trim().isNotEmpty) {
-      try {
-        final raw = jsonDecode(contentDocJson);
-        if (raw is Map<String, dynamic>) {
-          // 优先按结构化文档恢复。
-          final document = _ensureEditableDocument(
-            Document.fromJson(raw),
-            fallbackHeading: normalizedHeading,
-          );
-          // 旧版本可能写入了非 page/block 结构，直接回退到 markdown 兼容路径。
-          if (_looksLikeRenderableBlockDocument(document)) {
-            return document;
-          }
-        }
-      } catch (_) {
-        // docJson 无法解析时回退到 markdown，确保旧数据可读。
-      }
+    if (contentDocJson == null || contentDocJson.trim().isEmpty) {
+      return fallbackDocument;
     }
+
+    try {
+      final raw = jsonDecode(contentDocJson);
+
+      // 新格式：Quill Delta JSON（List）。
+      if (raw is List) {
+        final document = quill.Document.fromJson(raw);
+        return _ensureEditableDocument(
+          document,
+          fallbackHeading: fallbackHeading,
+        );
+      }
+
+      // 旧格式：结构化块文档（Map）。
+      if (raw is Map<String, dynamic>) {
+        final markdown = _decodeLegacyStructuredDocToMarkdown(
+          raw,
+          fallbackHeading: fallbackHeading,
+          fallbackMarkdown: fallbackMarkdown,
+        );
+        return _buildQuillDocumentFromMarkdown(
+          markdown,
+          fallbackHeading: fallbackHeading,
+        );
+      }
+    } catch (_) {
+      // ignore and fallback.
+    }
+
     return fallbackDocument;
   }
 
-  /// 构造一个“标题 + 正文段落”的初始文档，保证编辑器必有可编辑节点。
-  static Document buildInitialDocument({String heading = defaultHeading}) {
-    final normalized = heading.trim().isEmpty ? defaultHeading : heading.trim();
-    return Document(
-      root: Node(
-        type: 'page',
-        children: [headingNode(level: 1, text: normalized), paragraphNode()],
-      ),
+  static String _decodeLegacyStructuredDocToMarkdown(
+    Map<String, dynamic> raw, {
+    required String fallbackHeading,
+    required String fallbackMarkdown,
+  }) {
+    final richMarkdown = _decodeLegacyStructuredDocWithBlockSemantics(
+      raw,
+      fallbackHeading: fallbackHeading,
+    );
+    if (richMarkdown != null && richMarkdown.trim().isNotEmpty) {
+      return _preferRicherMarkdown(
+        candidate: richMarkdown,
+        fallback: fallbackMarkdown,
+      );
+    }
+
+    final lines = _collectLegacyTextLines(raw);
+    final nonEmpty = lines
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+
+    if (nonEmpty.isEmpty) {
+      return fallbackMarkdown;
+    }
+
+    final title = nonEmpty.first;
+    final body = nonEmpty.length > 1 ? nonEmpty.sublist(1) : const <String>[];
+    final decoded = _buildMarkdown(title, body);
+    return _preferRicherMarkdown(
+      candidate: decoded,
+      fallback: fallbackMarkdown,
     );
   }
 
-  static Document _ensureEditableDocument(
-    Document document, {
+  static String? _decodeLegacyStructuredDocWithBlockSemantics(
+    Map<String, dynamic> raw, {
     required String fallbackHeading,
   }) {
-    // AppFlowy 要求根节点下有可编辑块；空文档时补初始模板。
-    if (document.root.children.isNotEmpty) {
+    final lines = <String>[];
+    final rootChildren = raw['children'];
+    if (rootChildren is List && rootChildren.isNotEmpty) {
+      _collectLegacyBlockLines(rootChildren, lines);
+    } else {
+      _collectLegacyBlockLines(raw, lines);
+    }
+    final normalized = lines
+        .map((line) => line.trimRight())
+        .where((line) => line.trim().isNotEmpty)
+        .toList(growable: false);
+    if (normalized.isEmpty) {
+      return null;
+    }
+    return _buildMarkdownFromLegacyBlockLines(
+      lines: normalized,
+      fallbackHeading: fallbackHeading,
+    );
+  }
+
+  static void _collectLegacyBlockLines(Object? raw, List<String> lines) {
+    if (raw is List) {
+      for (final item in raw) {
+        _collectLegacyBlockLines(item, lines);
+      }
+      return;
+    }
+    if (raw is! Map) {
+      return;
+    }
+
+    final map = raw.cast<Object?, Object?>();
+    final text = _extractLegacyNodeText(map);
+    final prefix = _legacyMarkdownPrefix(map);
+    if (text != null && text.trim().isNotEmpty) {
+      final textLines = text.replaceAll('\r\n', '\n').split('\n');
+      for (final line in textLines) {
+        final normalized = line.trim();
+        if (normalized.isEmpty) {
+          continue;
+        }
+        lines.add('$prefix$normalized');
+      }
+    }
+
+    final children = map['children'];
+    if (children is List && children.isNotEmpty) {
+      _collectLegacyBlockLines(children, lines);
+    }
+  }
+
+  static String? _extractLegacyNodeText(Map<Object?, Object?> map) {
+    final deltaCandidates = <Object?>[
+      map['delta'],
+      map['ops'],
+      map['data'] is Map ? (map['data'] as Map)['delta'] : null,
+      map['data'] is Map ? (map['data'] as Map)['ops'] : null,
+    ];
+    for (final candidate in deltaCandidates) {
+      final text = _extractLegacyDeltaText(candidate);
+      if (text.trim().isNotEmpty) {
+        return text;
+      }
+    }
+
+    final textCandidates = <Object?>[
+      map['text'],
+      map['insert'],
+      map['title'],
+      map['data'] is Map ? (map['data'] as Map)['text'] : null,
+      map['data'] is Map ? (map['data'] as Map)['insert'] : null,
+      map['data'] is Map ? (map['data'] as Map)['title'] : null,
+    ];
+    for (final candidate in textCandidates) {
+      if (candidate is String && candidate.trim().isNotEmpty) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  static String _legacyMarkdownPrefix(Map<Object?, Object?> map) {
+    final hints = _legacyTypeHints(map);
+
+    if (_legacyContainsAny(hints, const ['heading', 'title'])) {
+      final level = _legacyHeadingLevel(map, hints);
+      return '${'#' * level} ';
+    }
+
+    if (_legacyContainsAny(hints, const [
+      'todo',
+      'checkbox',
+      'checklist',
+      'check_list',
+      'task',
+    ])) {
+      final checked = _legacyCheckedState(map);
+      return checked ? '- [x] ' : '- [ ] ';
+    }
+
+    if (_legacyContainsAny(hints, const ['numbered', 'ordered', 'ol'])) {
+      return '1. ';
+    }
+
+    if (_legacyContainsAny(hints, const ['bulleted', 'bullet', 'unordered'])) {
+      return '- ';
+    }
+
+    if (_legacyContainsAny(hints, const ['quote', 'blockquote'])) {
+      return '> ';
+    }
+
+    return '';
+  }
+
+  static String _legacyTypeHints(Map<Object?, Object?> map) {
+    final values = <String>[];
+    void push(Object? value) {
+      if (value is String && value.trim().isNotEmpty) {
+        values.add(value.trim().toLowerCase());
+      }
+    }
+
+    push(map['type']);
+    push(map['subtype']);
+    push(map['kind']);
+    push(map['style']);
+    final data = map['data'];
+    if (data is Map) {
+      push(data['type']);
+      push(data['subtype']);
+      push(data['kind']);
+      push(data['style']);
+    }
+    return values.join('|');
+  }
+
+  static bool _legacyContainsAny(String hints, List<String> needles) {
+    for (final needle in needles) {
+      if (hints.contains(needle)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static int _legacyHeadingLevel(Map<Object?, Object?> map, String hints) {
+    int? readLevel(Object? value) {
+      if (value is int) {
+        return value;
+      }
+      if (value is double) {
+        return value.toInt();
+      }
+      if (value is String) {
+        final parsed = int.tryParse(value);
+        if (parsed != null) {
+          return parsed;
+        }
+      }
+      return null;
+    }
+
+    final directCandidates = <Object?>[
+      map['level'],
+      map['headingLevel'],
+      map['heading_level'],
+    ];
+    for (final candidate in directCandidates) {
+      final level = readLevel(candidate);
+      if (level != null) {
+        return level.clamp(1, 3);
+      }
+    }
+
+    final data = map['data'];
+    if (data is Map) {
+      final dataCandidates = <Object?>[
+        data['level'],
+        data['headingLevel'],
+        data['heading_level'],
+      ];
+      for (final candidate in dataCandidates) {
+        final level = readLevel(candidate);
+        if (level != null) {
+          return level.clamp(1, 3);
+        }
+      }
+    }
+
+    final hintMatch = RegExp(
+      r'(?:^|[^a-z])h([1-6])(?:[^a-z]|$)',
+    ).firstMatch(hints);
+    if (hintMatch != null) {
+      final parsed = int.tryParse(hintMatch.group(1)!);
+      if (parsed != null) {
+        return parsed.clamp(1, 3);
+      }
+    }
+    return 1;
+  }
+
+  static bool _legacyCheckedState(Map<Object?, Object?> map) {
+    bool? readBool(Object? value) {
+      if (value is bool) {
+        return value;
+      }
+      if (value is num) {
+        return value != 0;
+      }
+      if (value is String) {
+        final normalized = value.trim().toLowerCase();
+        if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+          return true;
+        }
+        if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+          return false;
+        }
+      }
+      return null;
+    }
+
+    final directCandidates = <Object?>[
+      map['checked'],
+      map['isChecked'],
+      map['completed'],
+      map['done'],
+    ];
+    for (final candidate in directCandidates) {
+      final checked = readBool(candidate);
+      if (checked != null) {
+        return checked;
+      }
+    }
+
+    final data = map['data'];
+    if (data is Map) {
+      final dataCandidates = <Object?>[
+        data['checked'],
+        data['isChecked'],
+        data['completed'],
+        data['done'],
+      ];
+      for (final candidate in dataCandidates) {
+        final checked = readBool(candidate);
+        if (checked != null) {
+          return checked;
+        }
+      }
+    }
+    return false;
+  }
+
+  static String _buildMarkdownFromLegacyBlockLines({
+    required List<String> lines,
+    required String fallbackHeading,
+  }) {
+    if (lines.isEmpty) {
+      return buildNewNoteMarkdown(heading: fallbackHeading);
+    }
+
+    final firstLine = lines.first.trim();
+    if (RegExp(r'^#{1,6}\s+\S').hasMatch(firstLine)) {
+      if (lines.length <= 1) {
+        return lines.join('\n');
+      }
+      final rest = lines.skip(1).join('\n');
+      return '$firstLine\n\n$rest';
+    }
+
+    final heading = _normalizeHeading(fallbackHeading);
+    final body =
+        firstLine == heading
+            ? lines.skip(1).toList(growable: false)
+            : lines.toList(growable: false);
+    if (body.isEmpty) {
+      return buildNewNoteMarkdown(heading: heading);
+    }
+    return '# $heading\n\n${body.join('\n')}';
+  }
+
+  static List<String> _collectLegacyTextLines(Object? raw) {
+    final lines = <String>[];
+    _collectLegacyTextLinesRecursive(raw, lines);
+    return lines;
+  }
+
+  static void _collectLegacyTextLinesRecursive(
+    Object? raw,
+    List<String> lines,
+  ) {
+    if (raw is List) {
+      for (final item in raw) {
+        _collectLegacyTextLinesRecursive(item, lines);
+      }
+      return;
+    }
+
+    if (raw is! Map) {
+      return;
+    }
+
+    final map = raw.cast<Object?, Object?>();
+    final handledKeys = <String>{};
+
+    final inlineText = map['text'];
+    if (inlineText is String && inlineText.trim().isNotEmpty) {
+      lines.add(inlineText.trim());
+      handledKeys.add('text');
+    }
+
+    final insertText = map['insert'];
+    if (insertText is String && insertText.trim().isNotEmpty) {
+      final split = insertText
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty);
+      lines.addAll(split);
+      handledKeys.add('insert');
+    }
+
+    final deltaCandidates = <Object?>[
+      map['delta'],
+      map['ops'],
+      map['data'] is Map ? (map['data'] as Map)['delta'] : null,
+      map['data'] is Map ? (map['data'] as Map)['ops'] : null,
+    ];
+    for (final candidate in deltaCandidates) {
+      final deltaText = _extractLegacyDeltaText(candidate);
+      if (deltaText.isEmpty) {
+        continue;
+      }
+      final split = deltaText
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty);
+      lines.addAll(split);
+    }
+    handledKeys
+      ..add('delta')
+      ..add('ops')
+      ..add('data');
+
+    for (final entry in map.entries) {
+      final key = entry.key?.toString();
+      if (key != null && handledKeys.contains(key)) {
+        continue;
+      }
+      _collectLegacyTextLinesRecursive(entry.value, lines);
+    }
+  }
+
+  static String _extractLegacyDeltaText(Object? rawDelta) {
+    List<dynamic>? ops;
+    if (rawDelta is List) {
+      ops = rawDelta;
+    } else if (rawDelta is Map<String, dynamic> && rawDelta['ops'] is List) {
+      ops = rawDelta['ops'] as List<dynamic>;
+    }
+    if (ops == null || ops.isEmpty) {
+      return '';
+    }
+
+    final buffer = StringBuffer();
+    for (final op in ops) {
+      if (op is! Map) {
+        continue;
+      }
+      final insert = op['insert'];
+      if (insert is String) {
+        buffer.write(insert);
+      } else if (insert is Map && insert['text'] is String) {
+        buffer.write(insert['text'] as String);
+      }
+    }
+
+    return buffer.toString().replaceAll('\r\n', '\n').trimRight();
+  }
+
+  static quill.Document _buildQuillDocumentFromMarkdown(
+    String markdown, {
+    required String fallbackHeading,
+  }) {
+    final normalized = markdown.replaceAll('\r\n', '\n').trimRight();
+    if (normalized.trim().isEmpty) {
+      return buildInitialDocument(heading: fallbackHeading);
+    }
+
+    final lines = normalized.split('\n');
+    final delta = quill_delta.Delta();
+    var inCodeBlock = false;
+
+    for (final rawLine in lines) {
+      final parsed = _parseMarkdownBlockLine(
+        rawLine.trimRight(),
+        inCodeBlock: inCodeBlock,
+      );
+      if (parsed.isCodeFenceMarker) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+
+      if (parsed.text.isNotEmpty) {
+        delta.insert(parsed.text);
+      }
+      if (parsed.blockAttribute == null) {
+        delta.insert('\n');
+      } else {
+        delta.insert('\n', {
+          parsed.blockAttribute!.key: parsed.blockAttribute!.value,
+        });
+      }
+    }
+
+    if (delta.isEmpty) {
+      return buildInitialDocument(heading: fallbackHeading);
+    }
+    final document = quill.Document.fromDelta(delta);
+    return _ensureEditableDocument(document, fallbackHeading: fallbackHeading);
+  }
+
+  static _MarkdownBlockLine _parseMarkdownBlockLine(
+    String line, {
+    required bool inCodeBlock,
+  }) {
+    if (RegExp(r'^\s*```').hasMatch(line)) {
+      return const _MarkdownBlockLine(
+        text: '',
+        blockAttribute: null,
+        isCodeFenceMarker: true,
+      );
+    }
+
+    if (inCodeBlock) {
+      return _MarkdownBlockLine(
+        text: line,
+        blockAttribute: quill.Attribute.codeBlock,
+      );
+    }
+
+    final headerMatch = RegExp(r'^\s{0,3}(#{1,3})\s*(.*)$').firstMatch(line);
+    if (headerMatch != null) {
+      final level = headerMatch.group(1)!.length;
+      final text = headerMatch.group(2) ?? '';
+      final attr =
+          level == 1
+              ? quill.Attribute.h1
+              : (level == 2 ? quill.Attribute.h2 : quill.Attribute.h3);
+      return _MarkdownBlockLine(text: text, blockAttribute: attr);
+    }
+
+    final checklist = RegExp(r'^\s*-\s\[( |x|X)\]\s+(.*)$').firstMatch(line);
+    if (checklist != null) {
+      final checked = checklist.group(1)!.toLowerCase() == 'x';
+      return _MarkdownBlockLine(
+        text: checklist.group(2) ?? '',
+        blockAttribute:
+            checked ? quill.Attribute.checked : quill.Attribute.unchecked,
+      );
+    }
+
+    final ulMatch = RegExp(r'^\s*[-*+]\s+(.*)$').firstMatch(line);
+    if (ulMatch != null) {
+      return _MarkdownBlockLine(
+        text: ulMatch.group(1) ?? '',
+        blockAttribute: quill.Attribute.ul,
+      );
+    }
+
+    final olMatch = RegExp(r'^\s*\d+\.\s+(.*)$').firstMatch(line);
+    if (olMatch != null) {
+      return _MarkdownBlockLine(
+        text: olMatch.group(1) ?? '',
+        blockAttribute: quill.Attribute.ol,
+      );
+    }
+
+    final quoteMatch = RegExp(r'^\s*>\s?(.*)$').firstMatch(line);
+    if (quoteMatch != null) {
+      return _MarkdownBlockLine(
+        text: quoteMatch.group(1) ?? '',
+        blockAttribute: quill.Attribute.blockQuote,
+      );
+    }
+
+    return _MarkdownBlockLine(text: line, blockAttribute: null);
+  }
+
+  static quill.Document _buildQuillDocumentFromPlainText(String source) {
+    var text = source.replaceAll('\r\n', '\n');
+    if (text.trim().isEmpty) {
+      text = '$defaultHeading\n\n';
+    }
+    if (!text.endsWith('\n')) {
+      text = '$text\n';
+    }
+    return quill.Document.fromDelta(quill_delta.Delta()..insert(text));
+  }
+
+  static quill.Document _ensureEditableDocument(
+    quill.Document document, {
+    required String fallbackHeading,
+  }) {
+    final plain = document.toPlainText().replaceAll(RegExp(r'\s+'), '');
+    if (plain.isNotEmpty) {
       return document;
     }
     return buildInitialDocument(heading: fallbackHeading);
   }
 
+  static _DocumentSummary _summarizeDocument(quill.Document document) {
+    final lines = _normalizePlainTextLines(document.toPlainText());
+    var title = defaultHeading;
+    var titleIndex = -1;
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) {
+        continue;
+      }
+      title = line;
+      titleIndex = i;
+      break;
+    }
+
+    final bodyLines = <String>[];
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty || i == titleIndex) {
+        continue;
+      }
+      bodyLines.add(line);
+    }
+
+    final preview =
+        bodyLines.take(4).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return _DocumentSummary(
+      title: title,
+      preview: preview,
+      bodyLines: bodyLines,
+    );
+  }
+
+  static List<String> _normalizePlainTextLines(String plainText) {
+    return plainText.replaceAll('\r\n', '\n').split('\n');
+  }
+
+  static String _buildMarkdown(String title, List<String> bodyLines) {
+    final normalizedTitle = _normalizeHeading(title);
+    if (bodyLines.isEmpty) {
+      return '# $normalizedTitle\n\n';
+    }
+    return '# $normalizedTitle\n\n${bodyLines.join('\n')}';
+  }
+
+  static String _normalizeHeading(String? heading) {
+    final text = (heading ?? '').trim();
+    return text.isEmpty ? defaultHeading : text;
+  }
+
   static String _extractDisplayTitle(String markdown) {
-    // 优先取第一条 H1；否则回退默认标题。
     final lines = markdown.split('\n');
     for (final raw in lines) {
       final line = raw.trim();
@@ -222,7 +796,6 @@ class NoteDocCodec {
   }
 
   static String _extractPreviewText(String markdown) {
-    // 预览规则：跳过首个 H1，抓取最多 4 行有效内容并去 markdown 符号。
     final lines = markdown.split('\n');
     final filtered = <String>[];
     var skippedHeading = false;
@@ -251,97 +824,11 @@ class NoteDocCodec {
     return plain;
   }
 
-  static bool _looksLikeRenderableBlockDocument(Document document) {
-    if (document.root.children.isEmpty) {
-      return false;
-    }
-    // 最常见的错误结构是顶层直接为 text 节点，这在 AppFlowy 中不可作为块渲染。
-    for (final node in document.root.children) {
-      if (node.type == 'text') {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  static _DocumentSummary _summarizeDocument(Document document) {
-    // 先找第一条非空 H1 作为标题；若无 H1，退化为首条非空块文本。
-    final blocks = document.root.children;
-    var title = defaultHeading;
-    var titleIndex = -1;
-
-    for (var i = 0; i < blocks.length; i++) {
-      final text = _nodePlainText(blocks[i]);
-      if (text.isEmpty) {
-        continue;
-      }
-      final level = (blocks[i].attributes['level'] as num?)?.toInt();
-      final isH1 = blocks[i].type == 'heading' && level == 1;
-      if (isH1) {
-        title = text;
-        titleIndex = i;
-        break;
-      }
-      if (titleIndex == -1) {
-        title = text;
-        titleIndex = i;
-      }
-    }
-
-    final bodyLines = <String>[];
-    for (var i = 0; i < blocks.length; i++) {
-      if (i == titleIndex) {
-        continue;
-      }
-      final text = _nodePlainText(blocks[i]);
-      if (text.isEmpty) {
-        continue;
-      }
-      bodyLines.add(text);
-    }
-
-    final preview =
-        bodyLines.take(4).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    return _DocumentSummary(
-      title: title,
-      preview: preview,
-      bodyLines: bodyLines,
-    );
-  }
-
-  static String _nodePlainText(Node node) {
-    // 递归压平节点文本并规范空白，得到用于列表展示的纯文本。
-    final parts = <String>[];
-
-    final delta = node.delta;
-    if (delta != null) {
-      final text =
-          delta
-              .toPlainText()
-              .replaceAll('\n', ' ')
-              .replaceAll(RegExp(r'\s+'), ' ')
-              .trim();
-      if (text.isNotEmpty) {
-        parts.add(text);
-      }
-    }
-
-    for (final child in node.children) {
-      final text = _nodePlainText(child);
-      if (text.isNotEmpty) {
-        parts.add(text);
-      }
-    }
-
-    return parts.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
-
   static bool _isLikelyMarkdownSource(String source) {
     if (source.isEmpty) {
       return false;
     }
 
-    // 逐行语法特征：标题、列表、引用、代码块、表格、分隔线、任务列表。
     const linePatterns = <String>[
       r'^\s{0,3}#{1,6}\s+\S',
       r'^\s*[-*+]\s+\S',
@@ -359,7 +846,6 @@ class NoteDocCodec {
       }
     }
 
-    // 行级不命中时，再检查行内语法；至少命中 2 条才认为是 markdown 原文。
     var inlineHits = 0;
     const inlinePatterns = <String>[
       r'\[[^\]]+\]\([^)]+\)',
@@ -377,28 +863,64 @@ class NoteDocCodec {
     return inlineHits >= 2;
   }
 
-  static String _encodeMarkdownBestEffort({
-    required Document document,
-    required String fallbackTitle,
-    required List<String> bodyLines,
+  static String _preferRicherMarkdown({
+    required String candidate,
+    required String fallback,
   }) {
-    // 优先走官方 codec，失败时再走手工回退，避免保存链路中断。
-    try {
-      final markdown =
-          AppFlowyEditorMarkdownCodec().encode(document).toString();
-      if (markdown.trim().isNotEmpty) {
-        return markdown;
-      }
-    } catch (_) {
-      // 编码失败时使用回退 markdown。
+    final candidateScore = _markdownRichnessScore(candidate);
+    final fallbackScore = _markdownRichnessScore(fallback);
+    if (fallbackScore > candidateScore + 20) {
+      return fallback;
+    }
+    return candidate;
+  }
+
+  static int _markdownRichnessScore(String markdown) {
+    final nonWhitespaceLength =
+        _markdownToPlainText(markdown).replaceAll(RegExp(r'\s+'), '').length;
+    final nonEmptyLines =
+        markdown
+            .replaceAll('\r\n', '\n')
+            .split('\n')
+            .where((line) => line.trim().isNotEmpty)
+            .length;
+    final blockMarkerLines =
+        markdown.replaceAll('\r\n', '\n').split('\n').where((line) {
+          final normalized = line.trimLeft();
+          return normalized.startsWith('- [ ] ') ||
+              normalized.startsWith('- [x] ') ||
+              RegExp(r'^[-*+]\s+\S').hasMatch(normalized) ||
+              RegExp(r'^\d+\.\s+\S').hasMatch(normalized) ||
+              RegExp(r'^>\s*\S').hasMatch(normalized) ||
+              RegExp(r'^#{1,6}\s+\S').hasMatch(normalized);
+        }).length;
+    return nonWhitespaceLength + nonEmptyLines * 1000 + blockMarkerLines * 300;
+  }
+
+  static String _markdownToPlainText(String markdown) {
+    final lines = markdown.replaceAll('\r\n', '\n').split('\n');
+    final normalized = <String>[];
+
+    for (final rawLine in lines) {
+      var line = rawLine.trimRight();
+
+      line = line.replaceFirst(RegExp(r'^\s{0,3}#{1,6}\s+'), '');
+      line = line.replaceFirst(RegExp(r'^\s*>\s?'), '');
+      line = line.replaceFirst(RegExp(r'^\s*[-*+]\s+'), '');
+      line = line.replaceFirst(RegExp(r'^\s*\d+\.\s+'), '');
+      line = line.replaceFirst(RegExp(r'^\s*-\s\[(?: |x|X)\]\s+'), '');
+      line = line.replaceAll(RegExp(r'!\[([^\]]*)\]\([^)]+\)'), r'$1');
+      line = line.replaceAll(RegExp(r'\[([^\]]+)\]\([^)]+\)'), r'$1');
+      line = line.replaceAll(RegExp(r'`([^`]+)`'), r'$1');
+      line = line.replaceAll(RegExp(r'\*\*([^*]+)\*\*'), r'$1');
+      line = line.replaceAll(RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)'), r'$1');
+      line = line.replaceAll(RegExp(r'__(?!_)(.+?)__(?!_)'), r'$1');
+      line = line.replaceAll(RegExp(r'(?<!_)_([^_]+)_(?!_)'), r'$1');
+
+      normalized.add(line);
     }
 
-    final normalizedTitle =
-        fallbackTitle.trim().isEmpty ? defaultHeading : fallbackTitle.trim();
-    if (bodyLines.isEmpty) {
-      return '# $normalizedTitle\n\n';
-    }
-    return '# $normalizedTitle\n\n${bodyLines.join('\n')}';
+    return normalized.join('\n').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
   }
 }
 
@@ -412,4 +934,16 @@ class _DocumentSummary {
   final String title;
   final String preview;
   final List<String> bodyLines;
+}
+
+class _MarkdownBlockLine {
+  const _MarkdownBlockLine({
+    required this.text,
+    required this.blockAttribute,
+    this.isCodeFenceMarker = false,
+  });
+
+  final String text;
+  final quill.Attribute? blockAttribute;
+  final bool isCodeFenceMarker;
 }
