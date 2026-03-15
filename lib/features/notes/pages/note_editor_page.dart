@@ -36,6 +36,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
   static const double _mobileToolbarHeight = 44;
   static const double _mobileToolbarFloatingGap = 8;
   static const double _mobileToolbarHorizontalInset = 12;
+  static const double _desktopToolbarTopGap = 8;
 
   /// 编辑页会话控制器，负责加载/保存/删除等业务操作。
   late final NoteEditorController _controller;
@@ -255,6 +256,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
   Widget _buildEditorContent(
     BuildContext context, {
     required bool showFloatingToolbar,
+    required bool showDesktopPinnedToolbar,
   }) {
     final quillController = _controller.quillController;
     if (quillController == null) {
@@ -265,6 +267,10 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         showFloatingToolbar
             ? _mobileToolbarHeight + _mobileToolbarFloatingGap
             : _bottomStatusBarHeight + MediaQuery.paddingOf(context).bottom;
+    final topPadding =
+        showDesktopPinnedToolbar
+            ? _mobileToolbarHeight + _desktopToolbarTopGap
+            : 0.0;
 
     final editor = quill.QuillEditor(
       focusNode: _editorFocusNode,
@@ -279,6 +285,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     );
 
     return NoteEditorContentSection(
+      topPadding: topPadding,
       bottomPadding: bottomPadding,
       onUserScroll: _handleEditorUserScroll,
       child: editor,
@@ -303,6 +310,21 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
           color: Colors.transparent,
           child: _buildMobileToolbar(context, controller),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopPinnedToolbar(
+    BuildContext context,
+    quill.QuillController controller,
+  ) {
+    return Positioned(
+      left: AppSpacing.l,
+      right: AppSpacing.l,
+      top: 0,
+      child: Material(
+        color: Colors.transparent,
+        child: _buildMobileToolbar(context, controller),
       ),
     );
   }
@@ -537,6 +559,8 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
                     _isMobileRuntime &&
                     keyboardVisible &&
                     quillController != null;
+                final showDesktopPinnedToolbar =
+                    !_isMobileRuntime && quillController != null;
                 _controller.setKeyboardVisible(keyboardVisible);
 
                 return Stack(
@@ -545,8 +569,11 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
                       child: _buildEditorContent(
                         context,
                         showFloatingToolbar: showFloatingToolbar,
+                        showDesktopPinnedToolbar: showDesktopPinnedToolbar,
                       ),
                     ),
+                    if (showDesktopPinnedToolbar)
+                      _buildDesktopPinnedToolbar(context, quillController),
                     if (!keyboardVisible) _buildBottomStatusBar(),
                     if (showFloatingToolbar)
                       _buildKeyboardFloatingToolbar(context, quillController),

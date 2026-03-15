@@ -11,11 +11,13 @@ import '../../../app/theme/app_spacing.dart';
 class NoteEditorContentSection extends StatelessWidget {
   const NoteEditorContentSection({
     super.key,
+    this.topPadding = 0,
     required this.bottomPadding,
     required this.onUserScroll,
     required this.child,
   });
 
+  final double topPadding;
   final double bottomPadding;
   final NotificationListenerCallback<UserScrollNotification> onUserScroll;
   final Widget child;
@@ -25,7 +27,7 @@ class NoteEditorContentSection extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         AppSpacing.l,
-        0,
+        topPadding,
         AppSpacing.l,
         bottomPadding,
       ),
