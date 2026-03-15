@@ -102,12 +102,7 @@ class _NoteCategoryFilterBarState extends State<NoteCategoryFilterBar>
             : Colors.white;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.m,
-        AppSpacing.s,
-        AppSpacing.m,
-        AppSpacing.s,
-      ),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.s, 3, AppSpacing.s, 3),
       child: SizedBox(
         height: 32,
         child: ListView.separated(
