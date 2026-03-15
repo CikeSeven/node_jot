@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme/app_spacing.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/models/app_services.dart';
+import '../../../core/utils/note_category_codec.dart';
 import '../../../data/isar/collections/note_entity.dart';
 import '../../../l10n/app_localizations.dart';
 import '../note_editor_page.dart';
@@ -37,6 +38,7 @@ class _NotesPageState extends ConsumerState<NotesPage>
 
   final Set<String> _selectedNoteIds = <String>{};
   final Set<String> _optimisticHiddenNoteIds = <String>{};
+  final Set<String> _selectedCategoryFilterKeys = <String>{};
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final GlobalKey _listSearchFieldKey = GlobalKey();
@@ -136,7 +138,9 @@ class _NotesPageState extends ConsumerState<NotesPage>
       builder:
           (_) => AlertDialog(
             title: Text(l10n.delete),
-            content: Text(l10n.deleteSelectedConfirmMessage(selectedIds.length)),
+            content: Text(
+              l10n.deleteSelectedConfirmMessage(selectedIds.length),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -246,6 +250,61 @@ class _NotesPageState extends ConsumerState<NotesPage>
       _searchInput = '';
       _effectiveSearchKeyword = '';
     });
+  }
+
+  void _toggleCategoryFilter(String category, bool selected) {
+    final key = NoteCategoryCodec.toKey(category);
+    if (key.isEmpty) {
+      return;
+    }
+    setState(() {
+      if (selected) {
+        _selectedCategoryFilterKeys.add(key);
+      } else {
+        _selectedCategoryFilterKeys.remove(key);
+      }
+    });
+  }
+
+  void _clearCategoryFilters() {
+    if (_selectedCategoryFilterKeys.isEmpty) {
+      return;
+    }
+    setState(_selectedCategoryFilterKeys.clear);
+  }
+
+  bool _noteMatchesSelectedCategories(NoteEntity note) {
+    if (_selectedCategoryFilterKeys.isEmpty) {
+      return true;
+    }
+    final noteCategoryKeys = NoteCategoryCodec.toKeySet(note.categories);
+    for (final key in _selectedCategoryFilterKeys) {
+      if (!noteCategoryKeys.contains(key)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<String> _buildCategoryFiltersForDisplay({
+    required List<String> allCategories,
+    required List<NoteEntity> visibleNotes,
+    required String keyword,
+  }) {
+    if (keyword.trim().isEmpty) {
+      return allCategories;
+    }
+    final visibleCategoryKeys = <String>{};
+    for (final note in visibleNotes) {
+      visibleCategoryKeys.addAll(NoteCategoryCodec.toKeySet(note.categories));
+    }
+    return allCategories
+        .where((category) {
+          final key = NoteCategoryCodec.toKey(category);
+          return visibleCategoryKeys.contains(key) ||
+              _selectedCategoryFilterKeys.contains(key);
+        })
+        .toList(growable: false);
   }
 
   bool get _searchActivationEnabled => !_isSelectionMode && !_isSearchAnimating;
@@ -732,7 +791,9 @@ class _NotesPageState extends ConsumerState<NotesPage>
               },
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: AppTheme.pageBackground(Theme.of(context).brightness),
+                  gradient: AppTheme.pageBackground(
+                    Theme.of(context).brightness,
+                  ),
                 ),
                 child: SafeArea(
                   child: StreamBuilder<List<NoteEntity>>(
@@ -750,30 +811,14 @@ class _NotesPageState extends ConsumerState<NotesPage>
                               )
                               .map((note) => note.noteId)
                               .toSet();
-                      final notes =
-                          rawNotes
-                              .where(
-                                (note) =>
-                                    note.deletedAt == null &&
-                                    note.archivedAt == null &&
-                                    !_optimisticHiddenNoteIds.contains(
-                                      note.noteId,
-                                    ),
-                              )
-                              .toList(growable: false);
-                      final visibleIds = notes.map((e) => e.noteId).toSet();
-                      if (_selectedNoteIds.any((id) => !visibleIds.contains(id))) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (!mounted) {
-                            return;
-                          }
-                          setState(() {
-                            _selectedNoteIds.removeWhere(
-                              (id) => !visibleIds.contains(id),
-                            );
-                          });
-                        });
-                      }
+                      final notesByVisibility = rawNotes
+                          .where(
+                            (note) =>
+                                note.deletedAt == null &&
+                                note.archivedAt == null &&
+                                !_optimisticHiddenNoteIds.contains(note.noteId),
+                          )
+                          .toList(growable: false);
                       if (_optimisticHiddenNoteIds.any(
                         (id) => !activeIds.contains(id),
                       )) {
@@ -790,76 +835,141 @@ class _NotesPageState extends ConsumerState<NotesPage>
                       }
 
                       final showListSearchRow =
-                          _isSearchAnimating ? !_isSearchMorphEntering : !_isSearchMode;
+                          _isSearchAnimating
+                              ? !_isSearchMorphEntering
+                              : !_isSearchMode;
                       final hideListSearchFieldVisual =
                           _isSearchMode || _isSearchAnimating;
 
-                      return Column(
-                        children: [
-                          // 区块一：顶部头部（标题 + 页面操作）。
-                          AnimatedOpacity(
-                            duration: _searchMorphDuration,
-                            curve: Curves.easeOutCubic,
-                            opacity: _showHeaderSection ? 1 : 0,
-                            child: IgnorePointer(
-                              ignoring: !_showHeaderSection,
-                              child: NotesHeaderSection(
-                                isSelectionMode: _isSelectionMode,
-                                selectedCount: _selectedNoteIds.length,
-                                onCancelSelection: _clearSelection,
-                                onArchiveSelected:
-                                    () => _archiveSelected(services, l10n),
-                                onDeleteSelected:
-                                    () => _deleteSelected(services, l10n),
-                                onOpenArchived:
-                                    () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const ArchivedNotesPage(),
-                                      ),
-                                    ),
+                      return StreamBuilder<List<String>>(
+                        stream:
+                            services.noteRepository
+                                .watchActiveCategoryCatalog(),
+                        builder: (context, categorySnapshot) {
+                          final allCategories =
+                              categorySnapshot.data ?? const <String>[];
+                          final categoryFilters =
+                              _buildCategoryFiltersForDisplay(
+                                allCategories: allCategories,
+                                visibleNotes: notesByVisibility,
+                                keyword: _effectiveSearchKeyword,
+                              );
+                          final validCategoryKeys = NoteCategoryCodec.toKeySet(
+                            categoryFilters,
+                          );
+                          if (_selectedCategoryFilterKeys.any(
+                            (key) => !validCategoryKeys.contains(key),
+                          )) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!mounted) {
+                                return;
+                              }
+                              setState(() {
+                                _selectedCategoryFilterKeys.removeWhere(
+                                  (key) => !validCategoryKeys.contains(key),
+                                );
+                              });
+                            });
+                          }
+
+                          final notes = notesByVisibility
+                              .where(_noteMatchesSelectedCategories)
+                              .toList(growable: false);
+                          final visibleIds = notes.map((e) => e.noteId).toSet();
+                          if (_selectedNoteIds.any(
+                            (id) => !visibleIds.contains(id),
+                          )) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!mounted) {
+                                return;
+                              }
+                              setState(() {
+                                _selectedNoteIds.removeWhere(
+                                  (id) => !visibleIds.contains(id),
+                                );
+                              });
+                            });
+                          }
+
+                          return Column(
+                            children: [
+                              // 区块一：顶部头部（标题 + 页面操作）。
+                              AnimatedOpacity(
+                                duration: _searchMorphDuration,
+                                curve: Curves.easeOutCubic,
+                                opacity: _showHeaderSection ? 1 : 0,
+                                child: IgnorePointer(
+                                  ignoring: !_showHeaderSection,
+                                  child: NotesHeaderSection(
+                                    isSelectionMode: _isSelectionMode,
+                                    selectedCount: _selectedNoteIds.length,
+                                    onCancelSelection: _clearSelection,
+                                    onArchiveSelected:
+                                        () => _archiveSelected(services, l10n),
+                                    onDeleteSelected:
+                                        () => _deleteSelected(services, l10n),
+                                    onOpenArchived:
+                                        () => Navigator.of(context).push(
+                                          MaterialPageRoute<void>(
+                                            builder:
+                                                (_) =>
+                                                    const ArchivedNotesPage(),
+                                          ),
+                                        ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.s),
-                          // 区块二：主列表区域（含标题行、空态、笔记卡片）。
-                          NotesListSection(
-                            searchFieldKey: _listSearchFieldKey,
-                            searchPreviewText: _searchInput,
-                            showSearchRow: showListSearchRow,
-                            animateSearchRow: true,
-                            hideSearchFieldVisual: hideListSearchFieldVisual,
-                            searchEnabled: _searchActivationEnabled,
-                            onActivateSearchMode: _activateSearchMode,
-                            notes: notes,
-                            selectedNoteIds: _selectedNoteIds,
-                            isSelectionMode: _isSelectionMode,
-                            listBottomOffset: listBottomOffset,
-                            desktopContextMenuEnabled: desktopContextMenuEnabled,
-                            onCreate: _openEditor,
-                            onOpenEditor: _openEditor,
-                            onToggleSelection:
-                                (noteId, forceSelect) =>
-                                    _toggleSelection(
+                              const SizedBox(height: AppSpacing.s),
+                              // 区块二：主列表区域（含分类筛选、空态、笔记卡片）。
+                              NotesListSection(
+                                searchFieldKey: _listSearchFieldKey,
+                                searchPreviewText: _searchInput,
+                                showSearchRow: showListSearchRow,
+                                animateSearchRow: true,
+                                hideSearchFieldVisual:
+                                    hideListSearchFieldVisual,
+                                searchEnabled: _searchActivationEnabled,
+                                onActivateSearchMode: _activateSearchMode,
+                                categoryFilters: categoryFilters,
+                                selectedCategoryFilterKeys:
+                                    _selectedCategoryFilterKeys,
+                                onToggleCategoryFilter: _toggleCategoryFilter,
+                                onClearCategoryFilters: _clearCategoryFilters,
+                                notes: notes,
+                                selectedNoteIds: _selectedNoteIds,
+                                isSelectionMode: _isSelectionMode,
+                                listBottomOffset: listBottomOffset,
+                                desktopContextMenuEnabled:
+                                    desktopContextMenuEnabled,
+                                onCreate: _openEditor,
+                                onOpenEditor: _openEditor,
+                                onToggleSelection:
+                                    (noteId, forceSelect) => _toggleSelection(
                                       noteId,
                                       forceSelect: forceSelect,
                                     ),
-                            onShowContextMenu:
-                                (globalPosition, note) => _showNoteContextMenu(
-                                  globalPosition: globalPosition,
-                                  note: note,
-                                  services: services,
-                                  l10n: l10n,
-                                ),
-                            onArchiveBySwipe: (note) async {
-                              await services.syncEngine.archiveLocalNote(
-                                note.noteId,
-                              );
-                              if (context.mounted) {
-                                _showFloatingSnackBar(message: l10n.noteArchived);
-                              }
-                            },
-                          ),
-                        ],
+                                onShowContextMenu:
+                                    (globalPosition, note) =>
+                                        _showNoteContextMenu(
+                                          globalPosition: globalPosition,
+                                          note: note,
+                                          services: services,
+                                          l10n: l10n,
+                                        ),
+                                onArchiveBySwipe: (note) async {
+                                  await services.syncEngine.archiveLocalNote(
+                                    note.noteId,
+                                  );
+                                  if (context.mounted) {
+                                    _showFloatingSnackBar(
+                                      message: l10n.noteArchived,
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
+                          );
+                        },
                       );
                     },
                   ),

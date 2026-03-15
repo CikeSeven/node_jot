@@ -32,6 +32,13 @@ class NoteEntity {
   /// 文档渲染模式标记（当前固定为 `quill_delta`）。
   String? contentFormat;
 
+  /// 笔记分类（多分类）。
+  ///
+  /// 约束：
+  /// - 存储前会做去重与空白规整；
+  /// - 顺序按用户选择顺序保留。
+  List<String> categories = <String>[];
+
   /// 快照 schema 版本（用于同步协议版本控制）。
   int schemaVersion = 1;
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:isar/isar.dart';
 
 import '../../core/utils/id.dart';
+import '../../core/utils/note_category_codec.dart';
 import '../../core/utils/note_doc_codec.dart';
 import '../isar/collections/note_entity.dart';
 import '../isar/collections/op_log_entity.dart';
@@ -42,6 +43,27 @@ class NoteRepository {
           .sortByUpdatedAtDesc()
           .findAll();
     });
+  }
+
+  /// 监听活跃笔记的分类目录（去重后按名称升序）。
+  Stream<List<String>> watchActiveCategoryCatalog() {
+    return _db.noteEntitys.watchLazy(fireImmediately: true).asyncMap((_) async {
+      final notes =
+          await _db.noteEntitys
+              .where()
+              .filter()
+              .deletedAtIsNull()
+              .archivedAtIsNull()
+              .findAll();
+      return _buildCategoryCatalog(notes);
+    });
+  }
+
+  /// 加载当前分类目录（包含未删除笔记，含归档）。
+  Future<List<String>> loadCategoryCatalog() async {
+    final notes =
+        await _db.noteEntitys.where().filter().deletedAtIsNull().findAll();
+    return _buildCategoryCatalog(notes);
   }
 
   /// 按关键词监听未删除笔记（标题 + 正文）。
@@ -180,11 +202,13 @@ class NoteRepository {
   Future<SaveNoteOutcome> saveLocalNote({
     required String contentDocJson,
     required String editorDeviceId,
+    List<String> categories = const <String>[],
     String? noteId,
   }) async {
     final now = DateTime.now().toUtc();
     final wantedNoteId = noteId ?? newUuid();
     final incomingDoc = NoteDocCodec.fromDocJson(docJson: contentDocJson);
+    final normalizedCategories = NoteCategoryCodec.normalizeList(categories);
 
     late SaveNoteOutcome outcome;
 
@@ -203,7 +227,8 @@ class NoteRepository {
               ..baseRevision = 0
               ..headRevision = 1
               ..isConflictCopy = false
-              ..originNoteId = null;
+              ..originNoteId = null
+              ..categories = normalizedCategories;
         _applyDocSnapshotToNote(note, incomingDoc);
         await _db.noteEntitys.put(note);
         outcome = SaveNoteOutcome(note: note, isNew: true);
@@ -218,7 +243,8 @@ class NoteRepository {
         ..baseRevision = existing.headRevision
         ..headRevision = existing.headRevision + 1
         ..isConflictCopy = false
-        ..originNoteId = null;
+        ..originNoteId = null
+        ..categories = normalizedCategories;
       _applyDocSnapshotToNote(existing, incomingDoc);
 
       await _db.noteEntitys.put(existing);
@@ -318,6 +344,9 @@ class NoteRepository {
     final lastEditorDeviceId = snapshot['lastEditorDeviceId'] as String;
     final baseRevision = snapshot['baseRevision'] as int? ?? 0;
     final headRevision = snapshot['headRevision'] as int? ?? 0;
+    final categories = NoteCategoryCodec.fromSnapshotValue(
+      snapshot['categories'],
+    );
 
     final schema = (snapshot['schemaVersion'] as int?) ?? 1;
     final incomingDoc = _snapshotToDoc(snapshot, schema);
@@ -338,7 +367,8 @@ class NoteRepository {
               ..baseRevision = baseRevision
               ..headRevision = headRevision
               ..isConflictCopy = false
-              ..originNoteId = null;
+              ..originNoteId = null
+              ..categories = categories;
         _applyDocSnapshotToNote(fresh, incomingDoc);
         await _db.noteEntitys.put(fresh);
         outcome = ApplyRemoteOutcome(noteId: fresh.noteId, applied: true);
@@ -366,7 +396,8 @@ class NoteRepository {
         ..baseRevision = baseRevision
         ..headRevision = headRevision
         ..isConflictCopy = false
-        ..originNoteId = null;
+        ..originNoteId = null
+        ..categories = categories;
       _applyDocSnapshotToNote(local, incomingDoc);
       await _db.noteEntitys.put(local);
       outcome = ApplyRemoteOutcome(noteId: local.noteId, applied: true);
@@ -451,6 +482,7 @@ class NoteRepository {
       'displayTitleCache': note.displayTitleCache,
       'previewTextCache': note.previewTextCache,
       'contentFormat': note.contentFormat,
+      'categories': NoteCategoryCodec.normalizeList(note.categories),
       'schemaVersion': note.schemaVersion == 0 ? 1 : note.schemaVersion,
       'docVersion': note.docVersion == 0 ? 1 : note.docVersion,
       'updatedAt': note.updatedAt.toUtc().toIso8601String(),
@@ -467,6 +499,25 @@ class NoteRepository {
   /// 将笔记快照转为 JSON。
   String toSnapshotJson(NoteEntity note) {
     return jsonEncode(toSnapshot(note));
+  }
+
+  List<String> _buildCategoryCatalog(Iterable<NoteEntity> notes) {
+    final seen = <String>{};
+    final displayByKey = <String, String>{};
+    for (final note in notes) {
+      for (final category in note.categories) {
+        final label = NoteCategoryCodec.normalizeLabel(category);
+        final key = NoteCategoryCodec.toKey(label);
+        if (key.isEmpty) {
+          continue;
+        }
+        if (seen.add(key)) {
+          displayByKey[key] = label;
+        }
+      }
+    }
+    final keys = seen.toList(growable: false)..sort((a, b) => a.compareTo(b));
+    return keys.map((key) => displayByKey[key]!).toList(growable: false);
   }
 
   NoteDocSnapshot _snapshotToDoc(Map<String, dynamic> snapshot, int schema) {
@@ -502,6 +553,9 @@ class NoteRepository {
     final previousDocJson = (note.contentDocJson ?? '').trim();
     final previousContentMd = note.contentMd;
     final previousTitle = note.title;
+    final previousCategoriesSignature = NoteCategoryCodec.signature(
+      note.categories,
+    );
     final previousDisplayTitle = note.displayTitleCache;
     final previousPreview = note.previewTextCache;
     final previousContentFormat = note.contentFormat;
@@ -566,10 +620,13 @@ class NoteRepository {
     );
 
     _applyDocSnapshotToNote(note, nextSnapshot);
+    note.categories = NoteCategoryCodec.normalizeList(note.categories);
 
     return (note.contentDocJson ?? '').trim() != previousDocJson ||
         note.contentMd != previousContentMd ||
         note.title != previousTitle ||
+        NoteCategoryCodec.signature(note.categories) !=
+            previousCategoriesSignature ||
         note.displayTitleCache != previousDisplayTitle ||
         note.previewTextCache != previousPreview ||
         note.contentFormat != previousContentFormat ||

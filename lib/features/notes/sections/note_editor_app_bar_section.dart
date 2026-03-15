@@ -14,10 +14,12 @@ class NoteEditorAppBarSection extends StatelessWidget
   const NoteEditorAppBarSection({
     super.key,
     required this.onBack,
+    required this.onManageCategories,
     required this.onDelete,
   });
 
   final VoidCallback onBack;
+  final VoidCallback onManageCategories;
   final VoidCallback onDelete;
 
   @override
@@ -29,9 +31,10 @@ class NoteEditorAppBarSection extends StatelessWidget
     return AppBar(
       title: Text(
         l10n.noteTitle,
-        style: Theme.of(
-          context,
-        ).textTheme.titleMedium?.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       leading: IconButton(
         tooltip: MaterialLocalizations.of(context).backButtonTooltip,
@@ -39,6 +42,11 @@ class NoteEditorAppBarSection extends StatelessWidget
         icon: const Icon(CupertinoIcons.chevron_back),
       ),
       actions: [
+        IconButton(
+          tooltip: l10n.noteCategories,
+          onPressed: onManageCategories,
+          icon: const Icon(CupertinoIcons.tag),
+        ),
         IconButton(
           tooltip: l10n.delete,
           onPressed: onDelete,

@@ -1,10 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/theme/app_spacing.dart';
 import '../../../data/isar/collections/note_entity.dart';
 import '../../../l10n/app_localizations.dart';
+import '../widgets/note_category_filter_bar.dart';
 import '../widgets/note_card.dart';
 import '../widgets/notes_empty_state.dart';
 import '../widgets/swipe_action_background.dart';
@@ -12,7 +12,7 @@ import '../widgets/swipe_action_background.dart';
 /// 笔记页主列表区块。
 ///
 /// 布局职责：
-/// - 顶部列表标题行；
+/// - 顶部搜索与分类筛选；
 /// - 空状态展示；
 /// - 普通卡片列表；
 /// - 非多选模式下支持左滑归档。
@@ -30,6 +30,10 @@ class NotesListSection extends StatelessWidget {
     required this.hideSearchFieldVisual,
     required this.searchEnabled,
     required this.onActivateSearchMode,
+    required this.categoryFilters,
+    required this.selectedCategoryFilterKeys,
+    required this.onToggleCategoryFilter,
+    required this.onClearCategoryFilters,
     required this.notes,
     required this.selectedNoteIds,
     required this.isSelectionMode,
@@ -49,6 +53,10 @@ class NotesListSection extends StatelessWidget {
   final bool hideSearchFieldVisual;
   final bool searchEnabled;
   final VoidCallback onActivateSearchMode;
+  final List<String> categoryFilters;
+  final Set<String> selectedCategoryFilterKeys;
+  final void Function(String category, bool selected) onToggleCategoryFilter;
+  final VoidCallback onClearCategoryFilters;
   final List<NoteEntity> notes;
   final Set<String> selectedNoteIds;
   final bool isSelectionMode;
@@ -63,9 +71,7 @@ class NotesListSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final baseItemCount = notes.isEmpty ? 2 : notes.length + 1;
-    final itemCount = baseItemCount + 1;
+    final itemCount = notes.isEmpty ? 3 : notes.length + 2;
     return Expanded(
       child: ListView.separated(
         key: const PageStorageKey<String>('notes_list'),
@@ -143,7 +149,9 @@ class NotesListSection extends StatelessWidget {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  hasText ? displayedText : l10n.searchNotesHint,
+                                  hasText
+                                      ? displayedText
+                                      : context.l10n.searchNotesHint,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style:
@@ -167,25 +175,15 @@ class NotesListSection extends StatelessWidget {
             );
           }
 
-          final effectiveIndex = index - 1;
-
-          // 区块二：列表标题行（位于搜索框下方，随列表滚动）。
-          if (effectiveIndex == 0) {
+          // 区块二：分类筛选栏（位于搜索框下方，随列表滚动）。
+          if (index == 1) {
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      l10n.tabNotes,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  Text(
-                    DateFormat('MMM d').format(DateTime.now()),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
+              child: NoteCategoryFilterBar(
+                categories: categoryFilters,
+                selectedCategoryKeys: selectedCategoryFilterKeys,
+                onToggleCategory: onToggleCategoryFilter,
+                onClearCategories: onClearCategoryFilters,
               ),
             );
           }
@@ -199,7 +197,7 @@ class NotesListSection extends StatelessWidget {
           }
 
           // 区块四：普通笔记卡片。
-          final note = notes[effectiveIndex - 1];
+          final note = notes[index - 2];
           final selected = selectedNoteIds.contains(note.noteId);
 
           Widget card = Padding(
@@ -238,7 +236,7 @@ class NotesListSection extends StatelessWidget {
             key: ValueKey<String>('active-${note.noteId}'),
             direction: DismissDirection.endToStart,
             background: SwipeActionBackground(
-              label: l10n.archive,
+              label: context.l10n.archive,
               icon: CupertinoIcons.archivebox_fill,
               color: const Color(0xFF9C6BD8),
             ),

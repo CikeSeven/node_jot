@@ -5,6 +5,7 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 
 import '../../../core/models/app_services.dart';
 import '../../../core/utils/app_log.dart';
+import '../../../core/utils/note_category_codec.dart';
 import '../../../core/utils/note_doc_codec.dart';
 import '../../../data/isar/collections/note_entity.dart';
 import '../../../domain/services/sync_engine.dart';
@@ -45,6 +46,10 @@ class NoteEditorController {
   /// 当前字符数（去除空白字符后统计）。
   final ValueNotifier<int> charCountNotifier = ValueNotifier<int>(0);
 
+  /// 当前选中的分类列表（按用户选择顺序）。
+  final ValueNotifier<List<String>> selectedCategoriesNotifier =
+      ValueNotifier<List<String>>(const <String>[]);
+
   /// 最近一次错误信息（供页面按需展示或调试）。
   final ValueNotifier<String?> errorNotifier = ValueNotifier<String?>(null);
 
@@ -68,6 +73,8 @@ class NoteEditorController {
   /// 最近一次成功保存的文档 JSON 快照。
   String _lastSavedDocJson = '';
   String _lastObservedDocJson = '';
+  String _lastSavedCategorySignature = '';
+  String _lastObservedCategorySignature = '';
 
   /// 本次编辑会话是否发生过用户文本改动。
   bool _hasUserEditedInSession = false;
@@ -89,6 +96,7 @@ class NoteEditorController {
   String? get currentNoteId => _currentNoteId;
   bool get isEditingExistingNote => _openedWithExistingNote;
   bool get hasUserEditedInSession => _hasUserEditedInSession;
+  List<String> get selectedCategories => selectedCategoriesNotifier.value;
 
   /// 同步键盘可见状态。
   void setKeyboardVisible(bool visible) {
@@ -126,6 +134,10 @@ class NoteEditorController {
         selection: const TextSelection.collapsed(offset: 0),
       );
       _currentNoteId = existing?.noteId;
+      final initialCategories = NoteCategoryCodec.normalizeList(
+        existing?.categories ?? const <String>[],
+      );
+      selectedCategoriesNotifier.value = initialCategories;
       _openedWithExistingNote = existing != null;
       _ensureCurrentNoteSubscription();
 
@@ -135,6 +147,10 @@ class NoteEditorController {
       charCountNotifier.value = _countCharacters(snapshot.contentMd);
       _lastSavedDocJson = existing == null ? '' : snapshot.contentDocJson;
       _lastObservedDocJson = snapshot.contentDocJson;
+      _lastSavedCategorySignature = NoteCategoryCodec.signature(
+        initialCategories,
+      );
+      _lastObservedCategorySignature = _lastSavedCategorySignature;
       _attachEditorChangeListener();
     } catch (e) {
       errorNotifier.value = e.toString();
@@ -174,8 +190,14 @@ class NoteEditorController {
     final snapshot = NoteDocCodec.fromDocument(controller.document);
     markdownNotifier.value = snapshot.contentMd;
     charCountNotifier.value = _countCharacters(snapshot.contentMd);
+    final categories = NoteCategoryCodec.normalizeList(
+      selectedCategoriesNotifier.value,
+    );
+    final categorySignature = NoteCategoryCodec.signature(categories);
 
-    final changed = snapshot.contentDocJson != _lastSavedDocJson;
+    final changed =
+        snapshot.contentDocJson != _lastSavedDocJson ||
+        categorySignature != _lastSavedCategorySignature;
     final shouldWrite =
         changed || (allowWriteWhenSessionEdited && _hasUserEditedInSession);
     if (!shouldWrite) {
@@ -199,6 +221,7 @@ class NoteEditorController {
       final outcome = await services.syncEngine.saveLocalNote(
         noteId: _currentNoteId,
         contentDocJson: snapshot.contentDocJson,
+        categories: categories,
         source: SaveTriggerSource.localUser,
       );
       final previousNoteId = _currentNoteId;
@@ -206,6 +229,9 @@ class NoteEditorController {
       _createdDuringSession = _createdDuringSession || outcome.isNew;
       _lastSavedDocJson = snapshot.contentDocJson;
       _lastObservedDocJson = snapshot.contentDocJson;
+      _lastSavedCategorySignature = categorySignature;
+      _lastObservedCategorySignature = categorySignature;
+      selectedCategoriesNotifier.value = categories;
       if (previousNoteId != _currentNoteId) {
         _ensureCurrentNoteSubscription();
       }
@@ -310,6 +336,71 @@ class NoteEditorController {
     });
   }
 
+  bool updateSelectedCategories(
+    List<String> categories, {
+    bool markEdited = true,
+    bool scheduleSave = true,
+  }) {
+    final normalized = NoteCategoryCodec.normalizeList(categories);
+    final signature = NoteCategoryCodec.signature(normalized);
+    if (signature == _lastObservedCategorySignature) {
+      return false;
+    }
+
+    selectedCategoriesNotifier.value = normalized;
+    _lastObservedCategorySignature = signature;
+    if (markEdited) {
+      _hasUserEditedInSession = true;
+    }
+    if (scheduleSave) {
+      _scheduleDebouncedSave();
+    }
+    return true;
+  }
+
+  bool addCategory(String raw) {
+    final normalized = NoteCategoryCodec.normalizeLabel(raw);
+    if (normalized.isEmpty) {
+      return false;
+    }
+    final current = selectedCategoriesNotifier.value;
+    final existingKeys = NoteCategoryCodec.toKeySet(current);
+    final key = NoteCategoryCodec.toKey(normalized);
+    if (existingKeys.contains(key)) {
+      return false;
+    }
+    return updateSelectedCategories(<String>[...current, normalized]);
+  }
+
+  bool removeCategory(String category) {
+    final keyToRemove = NoteCategoryCodec.toKey(category);
+    if (keyToRemove.isEmpty) {
+      return false;
+    }
+    final next = selectedCategoriesNotifier.value
+        .where((value) {
+          return NoteCategoryCodec.toKey(value) != keyToRemove;
+        })
+        .toList(growable: false);
+    return updateSelectedCategories(next);
+  }
+
+  bool toggleCategory(String category) {
+    final key = NoteCategoryCodec.toKey(category);
+    if (key.isEmpty) {
+      return false;
+    }
+    final current = selectedCategoriesNotifier.value;
+    final hasSelected = current.any(
+      (value) => NoteCategoryCodec.toKey(value) == key,
+    );
+    if (hasSelected) {
+      return removeCategory(category);
+    }
+    final normalized = NoteCategoryCodec.normalizeLabel(category);
+    return updateSelectedCategories(<String>[...current, normalized]);
+  }
+
   /// 删除当前笔记。
   Future<void> deleteCurrentNote() async {
     final noteId = _currentNoteId;
@@ -398,20 +489,34 @@ class NoteEditorController {
       fallbackTitle: note.title,
     );
     final nextSnapshot = NoteDocCodec.fromDocument(nextDocument);
-    if (nextSnapshot.contentDocJson == _lastSavedDocJson) {
+    final remoteCategories = NoteCategoryCodec.normalizeList(note.categories);
+    final remoteCategorySignature = NoteCategoryCodec.signature(
+      remoteCategories,
+    );
+    final docUnchanged = nextSnapshot.contentDocJson == _lastSavedDocJson;
+    final categoriesUnchanged =
+        remoteCategorySignature == _lastSavedCategorySignature;
+    if (docUnchanged && categoriesUnchanged) {
       return;
     }
 
     _applyingRemoteOverride = true;
     try {
-      _replaceEditorDocument(nextDocument);
-      final appliedSnapshot = NoteDocCodec.fromDocument(
-        _quillController!.document,
-      );
-      markdownNotifier.value = appliedSnapshot.contentMd;
-      charCountNotifier.value = _countCharacters(appliedSnapshot.contentMd);
-      _lastSavedDocJson = appliedSnapshot.contentDocJson;
-      _lastObservedDocJson = appliedSnapshot.contentDocJson;
+      if (!docUnchanged) {
+        _replaceEditorDocument(nextDocument);
+        final appliedSnapshot = NoteDocCodec.fromDocument(
+          _quillController!.document,
+        );
+        markdownNotifier.value = appliedSnapshot.contentMd;
+        charCountNotifier.value = _countCharacters(appliedSnapshot.contentMd);
+        _lastSavedDocJson = appliedSnapshot.contentDocJson;
+        _lastObservedDocJson = appliedSnapshot.contentDocJson;
+      }
+      if (!categoriesUnchanged) {
+        selectedCategoriesNotifier.value = remoteCategories;
+        _lastSavedCategorySignature = remoteCategorySignature;
+        _lastObservedCategorySignature = remoteCategorySignature;
+      }
       AppLog.i('note-editor', 'applied remote update to current editing note');
     } catch (e) {
       AppLog.e('note-editor', 'apply remote update failed: $e');
@@ -461,6 +566,7 @@ class NoteEditorController {
     autoSavingNotifier.dispose();
     markdownNotifier.dispose();
     charCountNotifier.dispose();
+    selectedCategoriesNotifier.dispose();
     errorNotifier.dispose();
   }
 }

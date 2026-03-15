@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/note_category_codec.dart';
 import '../../../core/utils/note_doc_codec.dart';
 import '../../../core/utils/relative_time_formatter.dart';
 import '../../../data/isar/collections/note_entity.dart';
@@ -39,6 +40,7 @@ class NoteCard extends StatelessWidget {
         (note.previewTextCache ?? '').trim().isNotEmpty
             ? note.previewTextCache!.trim()
             : NoteDocCodec.extractPreviewText(note.contentMd).trim();
+    final categories = NoteCategoryCodec.normalizeList(note.categories);
 
     return Container(
       decoration: BoxDecoration(
@@ -81,6 +83,10 @@ class NoteCard extends StatelessWidget {
                   ],
                 ),
                 if (previewText.isNotEmpty) ...[
+                  if (categories.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _NoteCategoryRow(categories: categories),
+                  ],
                   const SizedBox(height: 6),
                   Text(
                     previewText,
@@ -89,8 +95,13 @@ class NoteCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 8),
-                ] else
+                ] else ...[
+                  if (categories.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _NoteCategoryRow(categories: categories),
+                  ],
                   const SizedBox(height: 4),
+                ],
                 Row(
                   children: [
                     Text(
@@ -108,6 +119,68 @@ class NoteCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NoteCategoryRow extends StatelessWidget {
+  const _NoteCategoryRow({required this.categories});
+
+  static const int _maxVisibleCategories = 2;
+
+  final List<String> categories;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final visible = categories
+        .take(_maxVisibleCategories)
+        .toList(growable: false);
+    final hiddenCount = categories.length - visible.length;
+
+    return SizedBox(
+      height: 22,
+      child: Row(
+        children: [
+          for (var index = 0; index < visible.length; index += 1) ...[
+            Flexible(
+              fit: FlexFit.loose,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '# ',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    TextSpan(
+                      text: visible[index],
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (index < visible.length - 1 || hiddenCount > 0)
+              const SizedBox(width: 8),
+          ],
+          if (hiddenCount > 0)
+            Text(
+              '+$hiddenCount',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
       ),
     );
   }

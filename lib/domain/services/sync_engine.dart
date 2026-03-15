@@ -286,12 +286,14 @@ class SyncEngine {
   Future<SaveNoteOutcome> saveLocalNote({
     String? noteId,
     required String contentDocJson,
+    List<String> categories = const <String>[],
     SaveTriggerSource source = SaveTriggerSource.localUser,
   }) async {
     final profile = _localDeviceService.profile;
     final outcome = await _noteRepository.saveLocalNote(
       noteId: noteId,
       contentDocJson: contentDocJson,
+      categories: categories,
       editorDeviceId: profile.deviceId,
     );
 

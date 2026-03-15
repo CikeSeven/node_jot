@@ -8,8 +8,10 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../app/theme/app_spacing.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/models/app_services.dart';
+import '../../../core/utils/note_category_codec.dart';
 import '../../../l10n/app_localizations.dart';
 import '../editor/note_editor_controller.dart';
 import '../sections/note_editor_app_bar_section.dart';
@@ -194,6 +196,32 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     );
   }
 
+  Future<void> _handleManageCategories() async {
+    if (_controller.loadingNotifier.value) {
+      return;
+    }
+    final catalog =
+        await _controller.services.noteRepository.loadCategoryCatalog();
+    if (!mounted) {
+      return;
+    }
+    final result = await showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) {
+        return _CategoryPickerSheet(
+          initialCatalog: catalog,
+          initialSelected: _controller.selectedCategories,
+        );
+      },
+    );
+    if (result == null) {
+      return;
+    }
+    _controller.updateSelectedCategories(result);
+  }
+
   /// 处理编辑器滚动通知。
   ///
   /// 键盘关闭时，用户主动滚动视图会让编辑器失焦，避免误触导致反复抢焦点。
@@ -219,6 +247,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     return NoteEditorAppBarSection(
       onBack: _handleBack,
+      onManageCategories: _handleManageCategories,
       onDelete: _handleDelete,
     );
   }
@@ -526,6 +555,229 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
               },
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryPickerSheet extends StatefulWidget {
+  const _CategoryPickerSheet({
+    required this.initialCatalog,
+    required this.initialSelected,
+  });
+
+  final List<String> initialCatalog;
+  final List<String> initialSelected;
+
+  @override
+  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
+}
+
+class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
+  final TextEditingController _inputController = TextEditingController();
+  final FocusNode _inputFocusNode = FocusNode();
+
+  late List<String> _catalog;
+  late List<String> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = NoteCategoryCodec.normalizeList(widget.initialSelected);
+    _catalog = _mergeCatalog(widget.initialCatalog, _selected);
+  }
+
+  @override
+  void dispose() {
+    _inputController.dispose();
+    _inputFocusNode.dispose();
+    super.dispose();
+  }
+
+  List<String> _mergeCatalog(List<String> catalog, List<String> selected) {
+    final normalizedCatalog = NoteCategoryCodec.normalizeList(catalog);
+    final normalizedSelected = NoteCategoryCodec.normalizeList(selected);
+    final seen = <String>{};
+    final merged = <String>[];
+
+    for (final category in <String>[
+      ...normalizedCatalog,
+      ...normalizedSelected,
+    ]) {
+      final key = NoteCategoryCodec.toKey(category);
+      if (key.isEmpty || !seen.add(key)) {
+        continue;
+      }
+      merged.add(category);
+    }
+    merged.sort(
+      (a, b) =>
+          NoteCategoryCodec.toKey(a).compareTo(NoteCategoryCodec.toKey(b)),
+    );
+    return merged;
+  }
+
+  void _toggleCategory(String category, bool selected) {
+    final key = NoteCategoryCodec.toKey(category);
+    if (key.isEmpty) {
+      return;
+    }
+    setState(() {
+      if (selected) {
+        if (_selected.any((item) => NoteCategoryCodec.toKey(item) == key)) {
+          return;
+        }
+        _selected = <String>[
+          ..._selected,
+          NoteCategoryCodec.normalizeLabel(category),
+        ];
+      } else {
+        _selected = _selected
+            .where((item) => NoteCategoryCodec.toKey(item) != key)
+            .toList(growable: false);
+      }
+      _selected = NoteCategoryCodec.normalizeList(_selected);
+    });
+  }
+
+  void _addCategoryFromInput() {
+    final value = NoteCategoryCodec.normalizeLabel(_inputController.text);
+    if (value.isEmpty) {
+      return;
+    }
+    final key = NoteCategoryCodec.toKey(value);
+    _inputController.clear();
+    setState(() {
+      if (!_catalog.any((item) => NoteCategoryCodec.toKey(item) == key)) {
+        _catalog = _mergeCatalog(<String>[..._catalog, value], _selected);
+      }
+      if (!_selected.any((item) => NoteCategoryCodec.toKey(item) == key)) {
+        _selected = NoteCategoryCodec.normalizeList(<String>[
+          ..._selected,
+          value,
+        ]);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final colorScheme = Theme.of(context).colorScheme;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.l,
+        AppSpacing.m,
+        AppSpacing.l,
+        AppSpacing.m + bottomInset,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.categoryManageTitle,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.s),
+            if (_selected.isNotEmpty) ...[
+              Wrap(
+                spacing: AppSpacing.s,
+                runSpacing: AppSpacing.s,
+                children: _selected
+                    .map(
+                      (category) => InputChip(
+                        label: Text('# $category'),
+                        onDeleted: () => _toggleCategory(category, false),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+              const SizedBox(height: AppSpacing.s),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _inputController,
+                    focusNode: _inputFocusNode,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _addCategoryFromInput(),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: l10n.categoryInputHint,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s),
+                FilledButton.tonal(
+                  onPressed: _addCategoryFromInput,
+                  child: Text(l10n.addCategory),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.m),
+            Flexible(
+              child:
+                  _catalog.isEmpty
+                      ? Center(
+                        child: Text(
+                          l10n.categoryNoData,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      )
+                      : SingleChildScrollView(
+                        child: Wrap(
+                          spacing: AppSpacing.s,
+                          runSpacing: AppSpacing.s,
+                          children: _catalog
+                              .map((category) {
+                                final selected = _selected.any(
+                                  (item) =>
+                                      NoteCategoryCodec.toKey(item) ==
+                                      NoteCategoryCodec.toKey(category),
+                                );
+                                return FilterChip(
+                                  label: Text(category),
+                                  selected: selected,
+                                  onSelected:
+                                      (value) =>
+                                          _toggleCategory(category, value),
+                                );
+                              })
+                              .toList(growable: false),
+                        ),
+                      ),
+            ),
+            const SizedBox(height: AppSpacing.m),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(l10n.cancel),
+                ),
+                const SizedBox(width: AppSpacing.s),
+                FilledButton(
+                  onPressed:
+                      () => Navigator.of(
+                        context,
+                      ).pop(NoteCategoryCodec.normalizeList(_selected)),
+                  child: Text(l10n.save),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

@@ -50,9 +50,11 @@ class AppLocalizations {
         ? DateFormat('M月d日', 'zh').format(local)
         : DateFormat('MMM d', 'en').format(local);
   }
+
   String formatFullDate(DateTime dateTime) {
     return DateFormat('yyyy-MM-dd').format(dateTime.toLocal());
   }
+
   String get noNotesYet => _isZh ? '还没有笔记' : 'No notes yet';
   String get searchNotesHint => _isZh ? '搜索笔记...' : 'Search notes...';
   String get createNote => _isZh ? '新建笔记' : 'Create Note';
@@ -60,6 +62,13 @@ class AppLocalizations {
   String get newNote => _isZh ? '新建笔记' : 'New Note';
   String get editNote => _isZh ? '编辑笔记' : 'Edit Note';
   String get noteTitle => _isZh ? '笔记' : 'Note';
+  String get noteCategories => _isZh ? '分类' : 'Categories';
+  String get categoryManageTitle => _isZh ? '管理分类' : 'Manage Categories';
+  String get categoryInputHint =>
+      _isZh ? '输入分类后回车添加' : 'Type a category and press Enter';
+  String get categoryNoData =>
+      _isZh ? '暂无分类，可先添加一个' : 'No categories yet, add one first';
+  String get addCategory => _isZh ? '添加分类' : 'Add Category';
   String get titleHint => _isZh ? '标题' : 'Title';
   String get markdownHint => _isZh ? '输入笔记...' : 'Type your note...';
   String get editorMode => _isZh ? '编辑' : 'Edit';
@@ -86,9 +95,7 @@ class AppLocalizations {
           ? '确定删除这条笔记吗？此操作无法撤销。'
           : 'Delete this note? This action cannot be undone.';
   String get clearContentWillDeleteConfirmMessage =>
-      _isZh
-          ? '此操作会删除笔记，是否继续？'
-          : 'This action will delete the note. Continue?';
+      _isZh ? '此操作会删除笔记，是否继续？' : 'This action will delete the note. Continue?';
   String get conflictCopyCreated =>
       _isZh
           ? '检测到冲突，已创建冲突副本。'
