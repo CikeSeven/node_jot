@@ -20,6 +20,7 @@ class NotesListSection extends StatelessWidget {
   static const Duration _searchRowAnimationDuration = Duration(
     milliseconds: 280,
   );
+  static const double _archiveSwipeThreshold = 0.82;
 
   const NotesListSection({
     super.key,
@@ -235,6 +236,9 @@ class NotesListSection extends StatelessWidget {
           return Dismissible(
             key: ValueKey<String>('active-${note.noteId}'),
             direction: DismissDirection.endToStart,
+            dismissThresholds: const <DismissDirection, double>{
+              DismissDirection.endToStart: _archiveSwipeThreshold,
+            },
             background: SwipeActionBackground(
               label: context.l10n.archive,
               icon: CupertinoIcons.archivebox_fill,
