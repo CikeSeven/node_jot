@@ -36,6 +36,10 @@ dev_dependencies:
   ffi: ^2.2.0
   flutter_launcher_icons: ^0.14.4
 
+dependency_overrides:
+  isar_flutter_libs:
+    path: third_party/isar_flutter_libs
+
 flutter:
 
   uses-material-design: true
