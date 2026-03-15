@@ -221,62 +221,85 @@ class MarkdownAutoFormatter {
     quill.QuillController controller,
     String insertedText,
   ) {
-    final plain = controller.document.toPlainText();
-    final cursorOffset = controller.selection.baseOffset;
-    if (plain.isEmpty || cursorOffset <= 0) {
-      return false;
-    }
-
-    final line = _resolveLineContext(plain, cursorOffset);
-    if (line.text.length > _maxLineLength || line.caretOffset <= 0) {
-      return false;
-    }
-
-    final prefix = line.text.substring(0, line.caretOffset);
-
     if (insertedText.contains('*')) {
-      final boldMatch = RegExp(r'\*\*([^*\n]+)\*\*$').firstMatch(prefix);
-      if (boldMatch != null) {
-        return _applyInlineWrap(
-          controller: controller,
-          line: line,
-          match: boldMatch,
-          wrapperLength: 2,
-          attribute: quill.Attribute.bold,
-        );
+      final boldChanged = _applyInlineWrapLoop(
+        controller: controller,
+        pattern: RegExp(r'\*\*([^*\n]+)\*\*'),
+        wrapperLength: 2,
+        attribute: quill.Attribute.bold,
+      );
+      if (boldChanged) {
+        return true;
       }
 
-      final italicMatch = RegExp(r'\*([^*\n]+)\*$').firstMatch(prefix);
-      if (italicMatch != null) {
-        final rawText = italicMatch.group(0)!;
-        final rawStart = line.caretOffset - rawText.length;
-        if (rawStart > 0 && line.text[rawStart - 1] == '*') {
-          return false;
-        }
-        return _applyInlineWrap(
-          controller: controller,
-          line: line,
-          match: italicMatch,
-          wrapperLength: 1,
-          attribute: quill.Attribute.italic,
-        );
+      final italicChanged = _applyInlineWrapLoop(
+        controller: controller,
+        pattern: RegExp(r'(?<!\*)\*([^*\n]+)\*(?!\*)'),
+        wrapperLength: 1,
+        attribute: quill.Attribute.italic,
+      );
+      if (italicChanged) {
+        return true;
       }
     }
 
     if (insertedText.contains('`')) {
-      final codeMatch = RegExp(r'`([^`\n]+)`$').firstMatch(prefix);
-      if (codeMatch != null) {
-        return _applyInlineWrap(
-          controller: controller,
-          line: line,
-          match: codeMatch,
-          wrapperLength: 1,
-          attribute: quill.Attribute.inlineCode,
-        );
+      final codeChanged = _applyInlineWrapLoop(
+        controller: controller,
+        pattern: RegExp(r'`([^`\n]+)`'),
+        wrapperLength: 1,
+        attribute: quill.Attribute.inlineCode,
+      );
+      if (codeChanged) {
+        return true;
       }
     }
 
     return false;
+  }
+
+  bool _applyInlineWrapLoop({
+    required quill.QuillController controller,
+    required RegExp pattern,
+    required int wrapperLength,
+    required quill.Attribute attribute,
+  }) {
+    var changed = false;
+    for (var i = 0; i < 8; i++) {
+      final plain = controller.document.toPlainText();
+      final cursorOffset = controller.selection.baseOffset;
+      if (plain.isEmpty || cursorOffset <= 0) {
+        break;
+      }
+      final line = _resolveLineContext(plain, cursorOffset);
+      if (line.text.length > _maxLineLength || line.caretOffset <= 0) {
+        break;
+      }
+      final prefix = line.text.substring(0, line.caretOffset);
+      final match = _lastMatch(prefix, pattern);
+      if (match == null) {
+        break;
+      }
+      changed = _applyInlineWrap(
+        controller: controller,
+        line: line,
+        match: match,
+        wrapperLength: wrapperLength,
+        attribute: attribute,
+      );
+      if (!changed) {
+        break;
+      }
+    }
+    return changed;
+  }
+
+  Match? _lastMatch(String text, RegExp pattern) {
+    Match? last;
+    for (final match in pattern.allMatches(text)) {
+      last = match;
+    }
+    return last;
   }
 
   bool _applyInlineWrap({
@@ -288,7 +311,7 @@ class MarkdownAutoFormatter {
   }) {
     final raw = match.group(0)!;
     final content = match.group(1)!;
-    final rawStart = line.caretOffset - raw.length;
+    final rawStart = match.start;
     final absStart = line.start + rawStart;
 
     // 先删尾标记，再删头标记，避免索引偏移。

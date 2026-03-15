@@ -32,6 +32,8 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
   static const Duration _deleteUndoDuration = Duration(seconds: 4);
   static const double _bottomStatusBarHeight = 24;
   static const double _mobileToolbarHeight = 44;
+  static const double _mobileToolbarFloatingGap = 8;
+  static const double _mobileToolbarHorizontalInset = 12;
 
   /// 编辑页会话控制器，负责加载/保存/删除等业务操作。
   late final NoteEditorController _controller;
@@ -221,19 +223,18 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     );
   }
 
-  Widget _buildEditorContent(BuildContext context) {
+  Widget _buildEditorContent(
+    BuildContext context, {
+    required bool showFloatingToolbar,
+  }) {
     final quillController = _controller.quillController;
     if (quillController == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final keyboardVisible = keyboardInset > 0;
-    _controller.setKeyboardVisible(keyboardVisible);
-
     final bottomPadding =
-        keyboardVisible
-            ? keyboardInset
+        showFloatingToolbar
+            ? _mobileToolbarHeight + _mobileToolbarFloatingGap
             : _bottomStatusBarHeight + MediaQuery.paddingOf(context).bottom;
 
     final editor = quill.QuillEditor(
@@ -248,16 +249,31 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
       ),
     );
 
-    final toolbar =
-        _isMobileRuntime && keyboardVisible
-            ? _buildMobileToolbar(context, quillController)
-            : null;
-
     return NoteEditorContentSection(
       bottomPadding: bottomPadding,
       onUserScroll: _handleEditorUserScroll,
-      child: Column(
-        children: [if (toolbar != null) toolbar, Expanded(child: editor)],
+      child: editor,
+    );
+  }
+
+  Widget _buildKeyboardFloatingToolbar(
+    BuildContext context,
+    quill.QuillController controller,
+  ) {
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      left: _mobileToolbarHorizontalInset,
+      right: _mobileToolbarHorizontalInset,
+      // Scaffold 已处理键盘避让，这里固定贴底悬浮。
+      bottom: 0,
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: _mobileToolbarFloatingGap),
+        child: Material(
+          color: Colors.transparent,
+          child: _buildMobileToolbar(context, controller),
+        ),
       ),
     );
   }
@@ -292,16 +308,37 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
           showDividers: true,
           showFontFamily: false,
           showFontSize: false,
+          showBoldButton: true,
+          showItalicButton: true,
+          showUnderLineButton: true,
+          showStrikeThrough: true,
+          showInlineCode: true,
           showSmallButton: false,
-          showColorButton: false,
-          showBackgroundColorButton: false,
-          showClearFormat: false,
+          showColorButton: true,
+          showBackgroundColorButton: true,
+          showClearFormat: true,
+          showUndo: true,
+          showRedo: true,
+          showListNumbers: true,
+          showListBullets: true,
+          showListCheck: true,
+          showCodeBlock: true,
+          showQuote: true,
+          showIndent: true,
+          showLink: true,
           showAlignmentButtons: false,
+          showHeaderStyle: false,
           showDirection: false,
           showSearchButton: false,
           showSubscript: false,
           showSuperscript: false,
-          showCodeBlock: false,
+          customButtons: [
+            quill.QuillToolbarCustomButtonOptions(
+              icon: const Icon(Icons.title, size: 18),
+              tooltip: 'Heading',
+              onPressed: () => _cycleHeaderStyle(controller),
+            ),
+          ],
           iconTheme: quill.QuillIconTheme(
             iconButtonUnselectedData: quill.IconButtonData(color: toolbarIcon),
             iconButtonSelectedData: quill.IconButtonData(
@@ -316,6 +353,18 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         ),
       ),
     );
+  }
+
+  void _cycleHeaderStyle(quill.QuillController controller) {
+    final currentHeader =
+        controller.getSelectionStyle().attributes[quill.Attribute.header.key];
+    final nextHeader = switch (currentHeader?.value) {
+      1 => quill.Attribute.h2,
+      2 => quill.Attribute.h3,
+      3 => quill.Attribute.header,
+      _ => quill.Attribute.h1,
+    };
+    controller.formatSelection(nextHeader);
   }
 
   /// 底部悬浮状态条区块。
@@ -428,6 +477,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
 
   @override
   Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardVisible = keyboardInset > 0;
+
     return PopScope<void>(
       // 自定义返回流程，确保先执行保存/清理，再 pop 页面。
       canPop: false,
@@ -437,7 +489,6 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
         }
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: false,
         appBar: _buildAppBar(context),
         body: Container(
           decoration: BoxDecoration(
@@ -452,13 +503,24 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final keyboardVisible =
-                    MediaQuery.viewInsetsOf(context).bottom > 0;
+                final quillController = _controller.quillController;
+                final showFloatingToolbar =
+                    _isMobileRuntime &&
+                    keyboardVisible &&
+                    quillController != null;
+                _controller.setKeyboardVisible(keyboardVisible);
 
                 return Stack(
                   children: [
-                    Positioned.fill(child: _buildEditorContent(context)),
+                    Positioned.fill(
+                      child: _buildEditorContent(
+                        context,
+                        showFloatingToolbar: showFloatingToolbar,
+                      ),
+                    ),
                     if (!keyboardVisible) _buildBottomStatusBar(),
+                    if (showFloatingToolbar)
+                      _buildKeyboardFloatingToolbar(context, quillController),
                   ],
                 );
               },

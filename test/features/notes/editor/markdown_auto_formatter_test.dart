@@ -92,6 +92,28 @@ void main() {
       expect(boldOp['attributes']['bold'], true);
     });
 
+    test(
+      'converts multiple **bold** segments in one insertion and keeps punctuation',
+      () {
+        final controller = _newController('A ');
+
+        _typeAndFormat(controller, formatter, '**x**，and **y**');
+
+        expect(controller.document.toPlainText(), 'A x，and y\n');
+        final ops = controller.document.toDelta().toJson();
+        final boldX = ops.firstWhere(
+          (op) => op['insert'] == 'x',
+          orElse: () => <String, dynamic>{},
+        );
+        final boldY = ops.firstWhere(
+          (op) => op['insert'] == 'y',
+          orElse: () => <String, dynamic>{},
+        );
+        expect(boldX['attributes']?['bold'], true);
+        expect(boldY['attributes']?['bold'], true);
+      },
+    );
+
     test('converts *italic* and `code` inline styles', () {
       final italicController = _newController('A ');
       _typeAndFormat(italicController, formatter, '*x*');
