@@ -11,6 +11,7 @@ import '../../../core/models/app_services.dart';
 import '../../../core/utils/note_category_codec.dart';
 import '../../../data/isar/collections/note_entity.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../ui/widgets/glass_bottom_nav.dart';
 import '../note_editor_page.dart';
 import '../sections/notes_header_section.dart';
 import '../sections/notes_list_section.dart';
@@ -35,6 +36,11 @@ class _NotesPageState extends ConsumerState<NotesPage>
   static const Duration _restoreHintDuration = Duration(seconds: 2);
   static const Duration _searchDebounceDuration = Duration(milliseconds: 200);
   static const Duration _searchMorphDuration = Duration(milliseconds: 280);
+  static const double _desktopBottomInset = 16;
+  static const double _fabGapAboveBottomNav = 4;
+  static const double _fabNudgeUp = 6;
+  static const double _fabNudgeLeft = 6;
+  static const double _listExtraBottomInset = 24;
 
   final Set<String> _selectedNoteIds = <String>{};
   final Set<String> _optimisticHiddenNoteIds = <String>{};
@@ -748,10 +754,15 @@ class _NotesPageState extends ConsumerState<NotesPage>
         platform == TargetPlatform.windows ||
         platform == TargetPlatform.macOS ||
         platform == TargetPlatform.linux;
+    final mobileBottomNavHeight = GlassBottomNav.occupiedHeight(context);
     final fabBottomOffset =
-        useSideRail ? 16.0 : 84 + MediaQuery.paddingOf(context).bottom;
+        useSideRail
+            ? _desktopBottomInset
+            : mobileBottomNavHeight - _fabGapAboveBottomNav;
     final listBottomOffset =
-        useSideRail ? 16.0 : 112 + MediaQuery.paddingOf(context).bottom;
+        useSideRail
+            ? _desktopBottomInset
+            : mobileBottomNavHeight + _listExtraBottomInset;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -982,8 +993,8 @@ class _NotesPageState extends ConsumerState<NotesPage>
           // 区块三：悬浮新建按钮（多选模式隐藏）。
           if (!_isSelectionMode)
             Positioned(
-              right: AppSpacing.l,
-              bottom: fabBottomOffset,
+              right: AppSpacing.l + _fabNudgeLeft,
+              bottom: fabBottomOffset + _fabNudgeUp,
               child: FloatingActionButton(
                 onPressed: _openEditor,
                 child: const Icon(CupertinoIcons.add),

@@ -34,6 +34,19 @@ class GlassBottomNav extends StatelessWidget {
   final double pageProgress;
   final ValueChanged<int> onTap;
 
+  /// 导航容器本体高度（不含 SafeArea 与外部边距）。
+  static const double barHeight = 76;
+
+  /// 底部最小外边距（与屏幕边缘留白）。
+  static const double bottomMinimumInset = 12;
+
+  /// 移动端底部导航占用高度（含安全区）。
+  static double occupiedHeight(BuildContext context) {
+    return barHeight +
+        bottomMinimumInset +
+        MediaQuery.paddingOf(context).bottom;
+  }
+
   @override
   Widget build(BuildContext context) {
     // 将外部传入进度限制在合法区间，避免动画越界。
@@ -45,7 +58,11 @@ class GlassBottomNav extends StatelessWidget {
 
     return SafeArea(
       // 悬浮底栏与屏幕边缘保留视觉呼吸感。
-      minimum: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+      minimum: const EdgeInsets.only(
+        bottom: bottomMinimumInset,
+        left: 16,
+        right: 16,
+      ),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadii.nav),
@@ -57,7 +74,7 @@ class GlassBottomNav extends StatelessWidget {
             // 导航容器毛玻璃模糊层。
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
-              height: 76,
+              height: barHeight,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -69,9 +86,8 @@ class GlassBottomNav extends StatelessWidget {
                           : const [Color(0x66FFFFFF), Color(0x55EFE8FF)],
                 ),
                 border: Border.all(
-                  color:
-                      (isDark ? AppColors.borderSoftDark : Colors.white)
-                          .withValues(alpha: 0.5),
+                  color: (isDark ? AppColors.borderSoftDark : Colors.white)
+                      .withValues(alpha: 0.5),
                 ),
               ),
               child: LayoutBuilder(
