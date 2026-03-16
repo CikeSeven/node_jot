@@ -55,6 +55,58 @@ class GlassBottomNav extends StatelessWidget {
       (items.length - 1).toDouble(),
     );
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final navTopColor =
+        isDark
+            ? Color.alphaBlend(
+              AppColors.accent.withValues(alpha: 0.20),
+              const Color(0xCC212531),
+            )
+            : Color.alphaBlend(
+              AppColors.primary.withValues(alpha: 0.18),
+              Colors.white.withValues(alpha: 0.86),
+            );
+    final navBottomColor =
+        isDark
+            ? Color.alphaBlend(
+              AppColors.primary.withValues(alpha: 0.16),
+              const Color(0xB01E222E),
+            )
+            : Color.alphaBlend(
+              AppColors.primarySoft.withValues(alpha: 0.72),
+              const Color(0xBDE9E1FF),
+            );
+    final navBorderColor =
+        isDark
+            ? AppColors.borderSoftDark.withValues(alpha: 0.72)
+            : AppColors.borderSoft.withValues(alpha: 0.78);
+    final inactiveItemColor =
+        isDark
+            ? AppColors.textSecondaryDark.withValues(alpha: 0.88)
+            : const Color(0xFF6D6487);
+    final activeIconColor =
+        isDark ? const Color(0xFFD8C9FF) : const Color(0xFF4E33B8);
+    final activeLabelColor =
+        isDark ? const Color(0xFFF1EAFF) : const Color(0xFF2B1A66);
+    final selectedPillColor =
+        isDark
+            ? Color.alphaBlend(
+              AppColors.accent.withValues(alpha: 0.34),
+              AppColors.surfaceSoftDark.withValues(alpha: 0.88),
+            )
+            : Color.alphaBlend(
+              AppColors.primary.withValues(alpha: 0.42),
+              AppColors.primarySoft.withValues(alpha: 0.96),
+            );
+    final navShadow = <BoxShadow>[
+      ...AppEffects.softShadow,
+      BoxShadow(
+        color: (isDark ? Colors.black : const Color(0xFF5B4E7C)).withValues(
+          alpha: isDark ? 0.32 : 0.16,
+        ),
+        blurRadius: 22,
+        offset: const Offset(0, 10),
+      ),
+    ];
 
     return SafeArea(
       // 悬浮底栏与屏幕边缘保留视觉呼吸感。
@@ -66,7 +118,7 @@ class GlassBottomNav extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadii.nav),
-          boxShadow: AppEffects.softShadow,
+          boxShadow: navShadow,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppRadii.nav),
@@ -80,15 +132,9 @@ class GlassBottomNav extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors:
-                      isDark
-                          ? const [Color(0xCC2B2F3F), Color(0xB3262938)]
-                          : const [Color(0x66FFFFFF), Color(0x55EFE8FF)],
+                  colors: [navTopColor, navBottomColor],
                 ),
-                border: Border.all(
-                  color: (isDark ? AppColors.borderSoftDark : Colors.white)
-                      .withValues(alpha: 0.5),
-                ),
+                border: Border.all(color: navBorderColor, width: 1.15),
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -109,9 +155,7 @@ class GlassBottomNav extends StatelessWidget {
                         child: IgnorePointer(
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: AppColors.primarySoft.withValues(
-                                alpha: 0.7,
-                              ),
+                              color: selectedPillColor,
                               borderRadius: BorderRadius.circular(22),
                             ),
                           ),
@@ -127,14 +171,14 @@ class GlassBottomNav extends StatelessWidget {
                           final t = 1 - distance;
                           final iconColor =
                               Color.lerp(
-                                AppColors.navInactive,
-                                AppColors.navActiveText,
+                                inactiveItemColor,
+                                activeIconColor,
                                 t,
                               )!;
                           final labelColor =
                               Color.lerp(
-                                AppColors.navInactive,
-                                AppColors.navActiveLabel,
+                                inactiveItemColor,
+                                activeLabelColor,
                                 t,
                               )!;
                           final scale = 1 + (0.03 * t);
@@ -151,7 +195,7 @@ class GlassBottomNav extends StatelessWidget {
                                 ),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisSize: MainAxisSize.max,
                                   children: [
                                     // 图标层。
                                     Transform.scale(
